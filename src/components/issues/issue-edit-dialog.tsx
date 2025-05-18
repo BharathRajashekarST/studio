@@ -1,7 +1,8 @@
+
 'use client';
 import { useActionState } from 'react';
 import { useEffect, useState } from 'react';
-import { useFormState } from 'react-dom';
+// import { useFormState } from 'react-dom'; // Not used
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,10 +24,10 @@ import {
 } from '@/components/ui/select';
 import type { Issue, IssuePriority, IssueStatus } from '@/lib/types';
 import { issueStatuses, issuePriorities } from '@/lib/types';
-import { assignees as mockAssignees } from '@/lib/mock-data'; // Corrected import path
+import { assignees as mockAssignees } from '@/lib/mock-data'; 
 import { updateIssueAction, type UpdateIssueActionState } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+// import { Loader2 } from 'lucide-react'; // Not used in SubmitButtonContent
 
 interface IssueEditDialogProps {
   issue: Issue | null;
@@ -40,24 +41,34 @@ const initialState: UpdateIssueActionState = {
   message: '',
 };
 
+// Special value for the "Unassigned" option in the Select component
+const UNASSIGNED_SELECT_VALUE = "_SELECT_UNASSIGNED_";
+
 export function IssueEditDialog({ issue, isOpen, onOpenChange, onIssueUpdated }: IssueEditDialogProps) {
   const [state, formAction] = useActionState(updateIssueAction, initialState);
   const { toast } = useToast();
-  const [currentAssignee, setCurrentAssignee] = useState(issue?.assignee || "unassigned");
+  // If issue.assignee is undefined, set currentAssignee to UNASSIGNED_SELECT_VALUE
+  // so "Unassigned" is selected in the dropdown. Otherwise, use the actual assignee name.
+  const [currentAssignee, setCurrentAssignee] = useState(issue?.assignee || UNASSIGNED_SELECT_VALUE);
 
   useEffect(() => {
     if (issue) {
-      setCurrentAssignee(issue.assignee || "unassigned");
+      setCurrentAssignee(issue.assignee || UNASSIGNED_SELECT_VALUE);
+    } else {
+      // If there's no issue (e.g., dialog is reset but somehow still tries to render form content),
+      // default to unassigned.
+      setCurrentAssignee(UNASSIGNED_SELECT_VALUE);
     }
   }, [issue]);
+
   useEffect(() => {
     if (state.status === 'success') {
       toast({
         title: 'Success',
         description: state.message,
       });
-      onIssueUpdated(); // Callback to refresh list or data
-      onOpenChange(false); // Close dialog
+      onIssueUpdated(); 
+      onOpenChange(false); 
     } else if (state.status === 'error') {
       toast({
         title: 'Error',
@@ -137,12 +148,13 @@ export function IssueEditDialog({ issue, isOpen, onOpenChange, onIssueUpdated }:
               <Label htmlFor="assignee" className="text-right">
                 Assignee
               </Label>
+              {/* The Select's value is controlled by currentAssignee state */}
               <Select name="assignee" value={currentAssignee} onValueChange={setCurrentAssignee}>
                 <SelectTrigger className="col-span-3">
                   <SelectValue placeholder="Select assignee" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  <SelectItem value={UNASSIGNED_SELECT_VALUE}>Unassigned</SelectItem>
                   {mockAssignees.map((assigneeName) => (
                     <SelectItem key={assigneeName} value={assigneeName}>
                       {assigneeName}
@@ -167,7 +179,7 @@ export function IssueEditDialog({ issue, isOpen, onOpenChange, onIssueUpdated }:
 }
 
 function SubmitButtonContent() {
-  // const { pending } = useFormStatus(); // Not suitable here with useFormState like this
-  // For simplicity, we don't show a pending state here.
+  // For simplicity, we don't show a pending state here without useFormStatus.
+  // useFormStatus can only be used in a component that is a child of the form.
   return <>Save Changes</>;
 }

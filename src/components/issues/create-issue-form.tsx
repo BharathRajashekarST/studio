@@ -23,6 +23,9 @@ const initialState: CommandActionState = {
   message: '',
 };
 
+// Special value for the "Unassigned" option in the Select component
+const UNASSIGNED_SELECT_VALUE = "_SELECT_UNASSIGNED_";
+
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -34,7 +37,8 @@ function SubmitButton() {
 
 export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
   const [title, setTitle] = React.useState('');
-  const [currentAssignee, setCurrentAssignee] = React.useState<string>(''); // Can be empty string for "unassigned" by default
+  // currentAssignee is empty string for placeholder, or UNASSIGNED_SELECT_VALUE, or actual assignee name
+  const [currentAssignee, setCurrentAssignee] = React.useState<string>(''); 
   const [currentStatus, setCurrentStatus] = React.useState<IssueStatus>('To Do');
   const [currentPriority, setCurrentPriority] = React.useState<IssuePriority>('Medium');
   
@@ -44,7 +48,12 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
 
   const commandValue = React.useMemo(() => {
     if (!title.trim()) return ""; // Don't generate command if title is empty
-    return `Create new issue: '${title.trim()}', assign to ${currentAssignee || 'unassigned'}, status ${currentStatus}, priority ${currentPriority}`;
+    
+    const assigneeForCommand = (currentAssignee === UNASSIGNED_SELECT_VALUE || !currentAssignee) 
+      ? 'unassigned' 
+      : currentAssignee;
+      
+    return `Create new issue: '${title.trim()}', assign to ${assigneeForCommand}, status ${currentStatus}, priority ${currentPriority}`;
   }, [title, currentAssignee, currentStatus, currentPriority]);
 
   React.useEffect(() => {
@@ -54,10 +63,10 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
         description: state.message,
       });
       setTitle('');
-      setCurrentAssignee('');
+      setCurrentAssignee(''); // Reset to empty to show placeholder
       setCurrentStatus('To Do');
       setCurrentPriority('Medium');
-      formRef.current?.reset(); // Reset native form fields if any weren't controlled or for safety
+      formRef.current?.reset(); 
       if (onIssueCreated && state.updatedIssueId) {
         onIssueCreated(state.updatedIssueId);
       }
@@ -125,7 +134,7 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
                 <SelectValue placeholder="Select assignee" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Unassigned</SelectItem>
+                <SelectItem value={UNASSIGNED_SELECT_VALUE}>Unassigned</SelectItem>
                 {mockAssignees.map((assigneeName) => (
                   <SelectItem key={assigneeName} value={assigneeName}>
                     {assigneeName}

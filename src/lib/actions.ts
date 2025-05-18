@@ -37,6 +37,9 @@ function generateNewIssueId(existingIssues: Issue[]): string {
   return `SF-${(maxId + 1).toString().padStart(3, '0')}`;
 }
 
+// Special value used by forms for "Unassigned" option, needs to be consistent with frontend components
+const UNASSIGNED_FORM_VALUE = "_SELECT_UNASSIGNED_";
+
 export async function processIssueCommandAction(
   prevState: CommandActionState,
   formData: FormData
@@ -79,7 +82,8 @@ export async function processIssueCommandAction(
         description: interpretation.description || '',
         status: (issueStatuses.includes(interpretation.status as IssueStatus) ? interpretation.status : 'To Do') as IssueStatus,
         priority: (issuePriorities.includes(interpretation.priority as IssuePriority) ? interpretation.priority : 'Medium') as IssuePriority,
-        assignee: interpretation.assignee || undefined, // Ensure undefined if not provided
+        // AI returns "unassigned" as string or actual name. Convert "unassigned" to undefined.
+        assignee: interpretation.assignee === 'unassigned' || !interpretation.assignee ? undefined : interpretation.assignee, 
         reporter: 'AI Command Bar', 
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -92,6 +96,7 @@ export async function processIssueCommandAction(
         status: 'success',
         message: `New issue ${newIssueId}: "${newIssue.title}" created.`,
         updatedIssueId,
+        interpretation, // Also return interpretation for create
       };
     } else if (interpretation.issueId) {
       // Actions that require an existing issueId
@@ -99,16 +104,16 @@ export async function processIssueCommandAction(
       if (!issueToUpdate) {
         return { status: 'error', message: `Issue ${interpretation.issueId} not found.`, interpretation };
       }
-      console.log(`Attempting to update issue ${issueToUpdate.id} with interpretation:`, interpretation); // Added logging
       updatedIssueId = issueToUpdate.id;
 
       if (interpretation.action === 'assignIssue' && interpretation.assignee) {
-        issueToUpdate.assignee = interpretation.assignee;
+        // AI returns "unassigned" as string or actual name. Convert "unassigned" to undefined.
+        issueToUpdate.assignee = interpretation.assignee === 'unassigned' || !interpretation.assignee ? undefined : interpretation.assignee;
         issueToUpdate.updatedAt = new Date().toISOString();
         revalidatePath('/');
         return {
           status: 'success',
-          message: `Issue ${issueToUpdate.id} assigned to ${interpretation.assignee}.`,
+          message: `Issue ${issueToUpdate.id} assigned to ${interpretation.assignee === 'unassigned' ? 'Unassigned' : interpretation.assignee}.`,
           interpretation,
           updatedIssueId,
         };
@@ -159,18 +164,15 @@ export async function processIssueCommandAction(
           updatedIssueId,
         };
       }
-      // If action implied an issueId but wasn't a recognized update action with necessary data
       return {
-        status: 'success', // Or 'error' if interpretation is incomplete for the action
-        message: `Command interpreted for issue ${interpretation.issueId}. Action '${interpretation.action}' may require more details or is not fully handled.`,
+        status: 'success', 
+        message: `Command interpreted for issue ${interpretation.issueId}. Action '${interpretation.action}' processed.`,
         interpretation,
         updatedIssueId,
       };
 
     }
 
-
-    // Default success message if no specific database action was taken but interpretation succeeded
     return {
       status: 'success',
       message: 'Command interpreted. Review interpretation below. No specific database action taken.',
@@ -199,7 +201,7 @@ const updateIssueSchema = z.object({
   description: z.string().optional(),
   status: z.custom<IssueStatus>((val) => issueStatuses.includes(val as IssueStatus), "Invalid status value"),
   priority: z.custom<IssuePriority>((val) => issuePriorities.includes(val as IssuePriority), "Invalid priority value"),
-  assignee: z.string().optional(),
+  assignee: z.string().optional(), // This will receive the name or UNASSIGNED_FORM_VALUE
 });
 
 
@@ -213,13 +215,12 @@ export async function updateIssueAction(
       description: formData.get('description'),
       status: formData.get('status'),
       priority: formData.get('priority'),
-      assignee: formData.get('assignee'),
+      assignee: formData.get('assignee'), // This will be string, e.g. "Bob", "_SELECT_UNASSIGNED_"
     };
 
     const validatedFields = updateIssueSchema.safeParse(rawData);
 
     if (!validatedFields.success) {
-      // Construct a more detailed error message from Zod errors
       let errorMessages = "Invalid data: ";
       const fieldErrors = validatedFields.error.flatten().fieldErrors;
       for (const key in fieldErrors) {
@@ -244,8 +245,8 @@ export async function updateIssueAction(
       const updatedIssue = {
         ...issuesDB[issueIndex],
         ...data,
-        // Ensure 'unassigned' or empty string becomes undefined for assignee if your type expects that
-        assignee: data.assignee === "unassigned" || data.assignee === "" ? undefined : data.assignee,
+        // Convert our special form value for "unassigned" back to undefined for the data model
+        assignee: data.assignee === UNASSIGNED_FORM_VALUE ? undefined : data.assignee,
         updatedAt: new Date().toISOString(),
       };
       issuesDB[issueIndex] = updatedIssue;
