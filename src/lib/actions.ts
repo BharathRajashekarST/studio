@@ -259,9 +259,51 @@ export async function updateIssueAction(
     }
   }
 
-  // Function to get current issues (simulates fetching from DB/Sheets)
+// Function to get current issues (simulates fetching from DB/Sheets)
 export async function getIssues(): Promise<Issue[]> {
     // In a real app, fetch from Google Sheets or database
     return Promise.resolve(issuesDB);
 }
 
+// ---- Delete Issue Action ----
+export interface DeleteIssueActionState {
+  status: 'idle' | 'success' | 'error';
+  message: string;
+}
+
+const deleteIssueSchema = z.object({
+  issueId: z.string().min(1, 'Issue ID is required for deletion.'),
+});
+
+export async function deleteIssueAction(
+  prevState: DeleteIssueActionState,
+  formData: FormData
+): Promise<DeleteIssueActionState> {
+  const validatedFields = deleteIssueSchema.safeParse({
+    issueId: formData.get('issueId'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      status: 'error',
+      message: validatedFields.error.flatten().fieldErrors.issueId?.[0] || 'Invalid input for deletion.',
+    };
+  }
+
+  const { issueId } = validatedFields.data;
+
+  try {
+    const issueIndex = issuesDB.findIndex(issue => issue.id === issueId);
+    if (issueIndex === -1) {
+      return { status: 'error', message: `Issue ${issueId} not found.` };
+    }
+
+    issuesDB.splice(issueIndex, 1); // Remove the issue from the array
+    revalidatePath('/'); // Revalidate the cache for the homepage
+
+    return { status: 'success', message: `Issue ${issueId} deleted successfully.` };
+  } catch (error) {
+    console.error('Error deleting issue:', error);
+    return { status: 'error', message: 'Failed to delete issue. Please try again.' };
+  }
+}

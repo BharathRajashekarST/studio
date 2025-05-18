@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -14,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Issue, IssuePriority, IssueStatus } from '@/lib/types';
 import { issueStatuses, issuePriorities } from '@/lib/types';
-import { ArrowUpDown, Edit, FilterX, ListFilter } from 'lucide-react';
+import { ArrowUpDown, Edit, FilterX, ListFilter, Trash2 } from 'lucide-react'; // Added Trash2
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format, parseISO } from 'date-fns';
@@ -22,12 +23,13 @@ import { format, parseISO } from 'date-fns';
 interface IssueListProps {
   issues: Issue[];
   onEditIssue: (issue: Issue) => void;
+  onDeleteIssue: (issueId: string) => void; // Added onDeleteIssue prop
 }
 
 type SortKey = keyof Issue | '';
 type SortOrder = 'asc' | 'desc';
 
-export function IssueList({ issues, onEditIssue }: IssueListProps) {
+export function IssueList({ issues, onEditIssue, onDeleteIssue }: IssueListProps) {
   const [filterText, setFilterText] = React.useState('');
   const [filterStatus, setFilterStatus] = React.useState<IssueStatus | 'all'>('all');
   const [filterPriority, setFilterPriority] = React.useState<IssuePriority | 'all'>('all');
@@ -198,9 +200,12 @@ export function IssueList({ issues, onEditIssue }: IssueListProps) {
                     </TableCell>
                     <TableCell>{issue.assignee || 'Unassigned'}</TableCell>
                     <TableCell>{format(parseISO(issue.updatedAt), 'MMM d, yyyy')}</TableCell>
-                    <TableCell>
+                    <TableCell className="space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => onEditIssue(issue)} aria-label={`Edit issue ${issue.id}`}>
                         <Edit className="h-4 w-4 text-primary" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => onDeleteIssue(issue.id)} aria-label={`Delete issue ${issue.id}`}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </TableCell>
                   </TableRow>
