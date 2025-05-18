@@ -51,7 +51,7 @@ export function IssueCommandBar({ onCommandProcessed }: { onCommandProcessed?: (
           AI Command Bar
         </CardTitle>
         <CardDescription>
-          Type commands like &quot;Create new issue: Fix login button, priority High&quot;, &quot;Update status of SF-001 to Done&quot;, or &quot;Assign SF-002 to Bob The Builder&quot;.
+          Type commands like &quot;Create new issue: Fix login button, priority High&quot;, &quot;Update status of SF-001 to Done&quot;, &quot;Assign SF-002 to Bob The Builder&quot;, or &quot;Create new issue: 'Develop feature X', assign to Diana Prince, priority Medium&quot;.
         </CardDescription>
       </CardHeader>
       <CardContent>
