@@ -19,6 +19,7 @@ const InterpretIssueCommandInputSchema = z.object({
 });
 export type InterpretIssueCommandInput = z.infer<typeof InterpretIssueCommandInputSchema>;
 
+// The 'description' field here will now correspond to 'generalNotes' in the structured description
 const InterpretIssueCommandOutputSchema = z.object({
   action: z
     .string()
@@ -35,10 +36,10 @@ const InterpretIssueCommandOutputSchema = z.object({
     .string()
     .optional()
     .describe("The title for a new issue, or a new title for an existing issue if action is 'updateIssueTitle'."),
-  description: z
+  description: z // This will be treated as 'generalNotes'
     .string()
     .optional()
-    .describe("The description for a new issue, or a new description if action is 'updateIssueDescription'."),
+    .describe("The general notes or textual description for an issue. For 'createIssue', this is the main text. For 'updateIssueDescription', this updates the general notes part of the issue."),
   assignee: z
     .string()
     .optional()
@@ -62,7 +63,7 @@ const interpretIssueCommandPrompt = ai.definePrompt({
   name: 'interpretIssueCommandPrompt',
   input: {schema: InterpretIssueCommandInputSchema},
   output: {schema: InterpretIssueCommandOutputSchema},
-  prompt: `You are an expert issue management assistant. Your task is to interpret user commands related to issue management and provide a structured JSON output according to the schema provided.
+  prompt: `You are an expert issue management assistant. Your task is to interpret user commands related to issue management and provide a structured JSON output according to the schema provided. The 'description' field in the output should capture general textual notes about the issue.
 
 User Command: "{{{command}}}"
 Contextual Issue ID (this is ONLY a fallback if the command itself doesn't specify an issue ID for an update/assignment action, and should be ignored if it's a placeholder like 'NO_CONTEXT_ID' or 'CREATE_CONTEXT'): "{{{issueId}}}"
@@ -71,8 +72,8 @@ Based on the User Command, determine the 'action' and extract relevant details.
 
 Possible Actions & Expected Fields in Output:
 - 'createIssue': If the command is to create a new issue.
-    - The 'title' MUST be ONLY the content extracted from the first single or double quoted string in the command. For example, if the command is "create issue 'Fix the login button' with high priority", the title is 'Fix the login button'.
-    - After extracting the title, parse the remainder of the command for 'description' (optional), 'assignee' (optional, e.g., from "assign to John Doe" or "assign to unassigned"), 'status' (optional, defaults to 'To Do' if not specified, e.g., from "status In Progress"), 'priority' (optional, defaults to 'Medium' if not specified, e.g., from "priority High").
+    - The 'title' MUST be ONLY the content extracted from the first single or double quoted string in the command. For example, if the command is "create issue 'Fix the login button' with high priority and description 'The button is broken'", the title is 'Fix the login button'.
+    - After extracting the title, parse the remainder of the command for 'description' (this will be general notes), 'assignee' (optional, e.g., from "assign to John Doe" or "assign to unassigned"), 'status' (optional, defaults to 'To Do' if not specified, e.g., from "status In Progress"), 'priority' (optional, defaults to 'Medium' if not specified, e.g., from "priority High").
     - The 'issueId' field in the output should be omitted for 'createIssue' as it's system-generated.
 - 'assignIssue': If the command is to assign an existing issue to someone.
     - Extract: 'issueId' (the ID of the issue to assign, e.g., "SF-001", parsed from the command), 'assignee' (required, e.g., from "assign to John Doe" or "assign to unassigned").
@@ -80,8 +81,8 @@ Possible Actions & Expected Fields in Output:
     - Extract: 'issueId' (the ID of the issue to update, parsed from the command), 'status' (required, e.g., "Done", "In Progress").
 - 'updateIssuePriority': If the command is to change the priority of an existing issue.
     - Extract: 'issueId' (the ID of the issue to update, parsed from the command), 'priority' (required, e.g., "High", "Low").
-- 'updateIssueDescription': If the command is to change the description of an existing issue.
-    - Extract: 'issueId' (the ID of the issue to update, parsed from the command), 'description' (required).
+- 'updateIssueDescription': If the command is to change the general notes/textual description of an existing issue.
+    - Extract: 'issueId' (the ID of the issue to update, parsed from the command), 'description' (required, this will update the general notes).
 - 'updateIssueTitle': If the command is to change the title of an existing issue.
     - Extract: 'issueId' (the ID of the issue to update, parsed from the command), 'title' (required).
 
@@ -113,4 +114,3 @@ const interpretIssueCommandFlow = ai.defineFlow(
     return output;
   }
 );
-

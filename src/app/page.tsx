@@ -7,14 +7,15 @@ import { IssueCommandBar } from '@/components/issues/issue-command-bar';
 import { IssueList } from '@/components/issues/issue-list';
 import { IssueEditDialog } from '@/components/issues/issue-edit-dialog';
 import { CreateIssueForm } from '@/components/issues/create-issue-form';
-import { ManageAssigneesCard } from '@/components/assignees/manage-assignees-card'; // New component
+import { ManageAssigneesCard } from '@/components/assignees/manage-assignees-card';
+import { IssueDetailsDialog } from '@/components/issues/issue-details-dialog'; // New import
 import type { Issue } from '@/lib/types';
 import { getIssues, deleteIssueAction, type DeleteIssueActionState, getAssignees } from '@/lib/actions';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel, // Added AlertDialogCancel here
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -32,8 +33,10 @@ const initialDeleteState: DeleteIssueActionState = {
 export default function HomePage() {
   const [issues, setIssues] = React.useState<Issue[]>([]);
   const [assignees, setAssignees] = React.useState<string[]>([]);
-  const [selectedIssue, setSelectedIssue] = React.useState<Issue | null>(null);
+  const [selectedIssueForEdit, setSelectedIssueForEdit] = React.useState<Issue | null>(null);
+  const [selectedIssueForDetails, setSelectedIssueForDetails] = React.useState<Issue | null>(null); // New state
   const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = React.useState(false); // New state
   const [isLoadingIssues, setIsLoadingIssues] = React.useState(true);
   const [isLoadingAssignees, setIsLoadingAssignees] = React.useState(true);
   const [issueToDeleteId, setIssueToDeleteId] = React.useState<string | null>(null);
@@ -76,8 +79,8 @@ export default function HomePage() {
   React.useEffect(() => {
     if (deleteState.status === 'success') {
       toast({ title: "Success", description: deleteState.message });
-      fetchAndSetIssues(); // Refresh list
-      setIsDeleteDialogOpen(false); // Close dialog
+      fetchAndSetIssues(); 
+      setIsDeleteDialogOpen(false);
       setIssueToDeleteId(null);
     } else if (deleteState.status === 'error') {
       toast({ title: "Error", description: deleteState.message, variant: "destructive" });
@@ -85,13 +88,23 @@ export default function HomePage() {
   }, [deleteState, toast, fetchAndSetIssues]);
 
   const handleEditIssue = (issue: Issue) => {
-    setSelectedIssue(issue);
+    setSelectedIssueForEdit(issue);
     setIsEditDialogOpen(true);
   };
+  
+  const handleViewIssueDetails = (issue: Issue) => {
+    setSelectedIssueForDetails(issue);
+    setIsDetailsDialogOpen(true);
+  };
 
-  const handleDialogClose = () => {
+  const handleEditDialogClose = () => {
     setIsEditDialogOpen(false);
-    setSelectedIssue(null);
+    setSelectedIssueForEdit(null);
+  };
+  
+  const handleDetailsDialogClose = () => {
+    setIsDetailsDialogOpen(false);
+    setSelectedIssueForDetails(null);
   };
 
   const handleIssueUpdatedOrCreated = React.useCallback(() => {
@@ -104,8 +117,6 @@ export default function HomePage() {
 
   const handleAssigneesUpdated = React.useCallback(() => {
     fetchAndSetAssignees();
-     // Optionally, refresh issues if assignees affect them directly (e.g. unassigning)
-     // fetchAndSetIssues(); 
   }, [fetchAndSetAssignees]);
 
   const handleOpenDeleteDialog = (id: string) => {
@@ -126,8 +137,11 @@ export default function HomePage() {
       <main className="mt-8 space-y-8">
         <IssueCommandBar onCommandProcessed={handleCommandProcessed} />
         
-        {isLoadingAssignees ? (
-           <Skeleton className="h-48 w-full" />
+        {isLoading ? ( // Combined loading state
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+             <div className="md:col-span-2"><Skeleton className="h-96 w-full" /></div>
+             <Skeleton className="h-48 w-full" />
+           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-2">
@@ -151,18 +165,33 @@ export default function HomePage() {
             <Skeleton className="h-32 w-full" />
           </div>
         ) : (
-          <IssueList issues={issues} onEditIssue={handleEditIssue} onDeleteIssue={handleOpenDeleteDialog} />
+          <IssueList 
+            issues={issues} 
+            onEditIssue={handleEditIssue} 
+            onDeleteIssue={handleOpenDeleteDialog}
+            onViewIssueDetails={handleViewIssueDetails} 
+          />
         )}
       </main>
-      {selectedIssue && (
+
+      {selectedIssueForEdit && (
         <IssueEditDialog
-          issue={selectedIssue}
+          issue={selectedIssueForEdit}
           isOpen={isEditDialogOpen}
-          onOpenChange={handleDialogClose}
+          onOpenChange={handleEditDialogClose}
           onIssueUpdated={handleIssueUpdatedOrCreated}
           assignees={assignees}
         />
       )}
+
+      {selectedIssueForDetails && (
+        <IssueDetailsDialog
+          issue={selectedIssueForDetails}
+          isOpen={isDetailsDialogOpen}
+          onOpenChange={handleDetailsDialogClose}
+        />
+      )}
+
       {isDeleteDialogOpen && issueToDeleteId && (
         <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
           <AlertDialogContent>

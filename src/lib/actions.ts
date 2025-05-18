@@ -3,28 +3,24 @@
 
 import { z } from 'zod';
 import { interpretIssueCommand, type InterpretIssueCommandOutput } from '@/ai/flows/interpret-issue-command';
-import type { Issue, IssuePriority, IssueStatus } from '@/lib/types';
-import { issuePriorities, issueStatuses } from '@/lib/types'; // Import for validation
+import type { Issue, IssuePriority, IssueStatus, IssueDescription, ApiMethod } from '@/lib/types';
+import { issuePriorities, issueStatuses, apiMethods } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
-import { assignees as assigneesDB, initialIssues } from '@/lib/mock-data'; // Import assigneesDB
+import { assignees as assigneesDB, initialIssues } from '@/lib/mock-data';
 
-// Simulate a database or Google Sheets API
-// In a real app, this would interact with Google Sheets or a database.
 let issuesDB: Issue[] = initialIssues;
-
 
 export interface CommandActionState {
   status: 'idle' | 'success' | 'error';
   message: string;
   interpretation?: InterpretIssueCommandOutput;
-  updatedIssueId?: string; // Could be new or existing ID
+  updatedIssueId?: string;
 }
 
 const commandSchema = z.object({
   command: z.string().min(1, 'Command cannot be empty.'),
 });
 
-// Helper function to generate a new issue ID
 function generateNewIssueId(existingIssues: Issue[]): string {
   const numericIds = existingIssues
     .map(issue => {
@@ -36,8 +32,9 @@ function generateNewIssueId(existingIssues: Issue[]): string {
   return `SF-${(maxId + 1).toString().padStart(3, '0')}`;
 }
 
-// Special value used by forms for "Unassigned" option, needs to be consistent with frontend components
 const UNASSIGNED_FORM_VALUE = "_SELECT_UNASSIGNED_";
+const API_METHOD_NA_FORM_VALUE = "_API_METHOD_NA_";
+
 
 export async function processIssueCommandAction(
   prevState: CommandActionState,
@@ -75,7 +72,9 @@ export async function processIssueCommandAction(
       const newIssue: Issue = {
         id: newIssueId,
         title: interpretation.title,
-        description: interpretation.description || '',
+        description: { 
+            generalNotes: interpretation.description || '',
+        },
         status: (issueStatuses.includes(interpretation.status as IssueStatus) ? interpretation.status : 'To Do') as IssueStatus,
         priority: (issuePriorities.includes(interpretation.priority as IssuePriority) ? interpretation.priority : 'Medium') as IssuePriority,
         assignee: interpretation.assignee === 'unassigned' || !interpretation.assignee ? undefined : interpretation.assignee, 
@@ -103,72 +102,39 @@ export async function processIssueCommandAction(
       if (interpretation.action === 'assignIssue' && interpretation.assignee) {
         issueToUpdate.assignee = interpretation.assignee === 'unassigned' || !interpretation.assignee ? undefined : interpretation.assignee;
         issueToUpdate.updatedAt = new Date().toISOString();
-        revalidatePath('/');
-        return {
-          status: 'success',
-          message: `Issue ${issueToUpdate.id} assigned to ${interpretation.assignee === 'unassigned' ? 'Unassigned' : interpretation.assignee}.`,
-          interpretation,
-          updatedIssueId,
-        };
       } else if (interpretation.action === 'updateIssueStatus' && interpretation.status) {
         if (!issueStatuses.includes(interpretation.status as IssueStatus)) {
-            return { status: 'error', message: `Invalid status: ${interpretation.status}. Valid are: ${issueStatuses.join(', ')}`, interpretation };
+            return { status: 'error', message: `Invalid status: ${interpretation.status}.`, interpretation };
         }
         issueToUpdate.status = interpretation.status as IssueStatus;
         issueToUpdate.updatedAt = new Date().toISOString();
-        revalidatePath('/');
-        return {
-          status: 'success',
-          message: `Status of ${issueToUpdate.id} updated to ${interpretation.status}.`,
-          interpretation,
-          updatedIssueId,
-        };
       } else if (interpretation.action === 'updateIssuePriority' && interpretation.priority) {
          if (!issuePriorities.includes(interpretation.priority as IssuePriority)) {
-            return { status: 'error', message: `Invalid priority: ${interpretation.priority}. Valid are: ${issuePriorities.join(', ')}`, interpretation };
+            return { status: 'error', message: `Invalid priority: ${interpretation.priority}.`, interpretation };
         }
         issueToUpdate.priority = interpretation.priority as IssuePriority;
         issueToUpdate.updatedAt = new Date().toISOString();
-        revalidatePath('/');
-        return {
-          status: 'success',
-          message: `Priority of ${issueToUpdate.id} updated to ${interpretation.priority}.`,
-          interpretation,
-          updatedIssueId,
-        };
       } else if (interpretation.action === 'updateIssueDescription' && typeof interpretation.description === 'string') {
-        issueToUpdate.description = interpretation.description;
+        issueToUpdate.description.generalNotes = interpretation.description;
         issueToUpdate.updatedAt = new Date().toISOString();
-        revalidatePath('/');
-        return {
-          status: 'success',
-          message: `Description of ${issueToUpdate.id} updated.`,
-          interpretation,
-          updatedIssueId,
-        };
       } else if (interpretation.action === 'updateIssueTitle' && interpretation.title) {
         issueToUpdate.title = interpretation.title;
         issueToUpdate.updatedAt = new Date().toISOString();
-        revalidatePath('/');
-        return {
-          status: 'success',
-          message: `Title of ${issueToUpdate.id} updated.`,
-          interpretation,
-          updatedIssueId,
-        };
+      } else {
+         return { status: 'error', message: `Unknown or incomplete action for issue ${interpretation.issueId}.`, interpretation };
       }
+      revalidatePath('/');
       return {
-        status: 'success', 
-        message: `Command interpreted for issue ${interpretation.issueId}. Action '${interpretation.action}' processed.`,
+        status: 'success',
+        message: `Issue ${issueToUpdate.id} updated based on command. Action: ${interpretation.action}.`,
         interpretation,
         updatedIssueId,
       };
-
     }
 
     return {
       status: 'success',
-      message: 'Command interpreted. Review interpretation below. No specific database action taken.',
+      message: 'Command interpreted. Review interpretation below. No specific database action taken as no issue ID was identified for update/assign, and it was not a create command.',
       interpretation,
     };
   } catch (error) {
@@ -181,7 +147,6 @@ export async function processIssueCommandAction(
   }
 }
 
-
 export interface UpdateIssueActionState {
   status: 'idle' | 'success' | 'error';
   message: string;
@@ -191,10 +156,20 @@ export interface UpdateIssueActionState {
 const updateIssueSchema = z.object({
   id: z.string(),
   title: z.string().min(1, 'Title is required'),
-  description: z.string().optional(),
   status: z.custom<IssueStatus>((val) => issueStatuses.includes(val as IssueStatus), "Invalid status value"),
   priority: z.custom<IssuePriority>((val) => issuePriorities.includes(val as IssuePriority), "Invalid priority value"),
-  assignee: z.string().optional(), 
+  assignee: z.string().optional(),
+  description_apiName: z.string().optional(),
+  description_method: z.string().optional(), // Accepts API_METHOD_NA_FORM_VALUE or actual methods
+  description_payload: z.string().optional(),
+  description_response: z.string().optional(),
+  description_responseCode: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
+    z.number().int().optional()
+  ),
+  description_imageDataUri: z.string().optional(), 
+  description_imageDataUri_clear: z.string().optional(), 
+  description_generalNotes: z.string().optional(),
 });
 
 
@@ -205,10 +180,17 @@ export async function updateIssueAction(
     const rawData = {
       id: formData.get('id'),
       title: formData.get('title'),
-      description: formData.get('description'),
       status: formData.get('status'),
       priority: formData.get('priority'),
-      assignee: formData.get('assignee'), 
+      assignee: formData.get('assignee'),
+      description_apiName: formData.get('description_apiName'),
+      description_method: formData.get('description_method'),
+      description_payload: formData.get('description_payload'),
+      description_response: formData.get('description_response'),
+      description_responseCode: formData.get('description_responseCode'),
+      description_imageDataUri: formData.get('description_imageDataUri'),
+      description_imageDataUri_clear: formData.get('description_imageDataUri_clear'),
+      description_generalNotes: formData.get('description_generalNotes'),
     };
 
     const validatedFields = updateIssueSchema.safeParse(rawData);
@@ -235,24 +217,47 @@ export async function updateIssueAction(
         return { status: 'error', message: 'Issue not found.' };
       }
       
-      const updatedIssue = {
-        ...issuesDB[issueIndex],
-        ...data,
+      const existingIssue = issuesDB[issueIndex];
+      
+      let actualApiMethod: ApiMethod | undefined = undefined;
+      if (data.description_method && data.description_method !== API_METHOD_NA_FORM_VALUE) {
+        actualApiMethod = data.description_method as ApiMethod;
+      } else if (data.description_method === '') { // Handle if empty string is somehow passed despite NA value
+         actualApiMethod = undefined; // Or treat '' as a valid ApiMethod if desired
+      }
+
+
+      const newDescription: IssueDescription = {
+        apiName: data.description_apiName,
+        method: actualApiMethod,
+        payload: data.description_payload,
+        response: data.description_response,
+        responseCode: data.description_responseCode,
+        imageDataUri: data.description_imageDataUri_clear === "true" 
+                        ? undefined 
+                        : (data.description_imageDataUri || existingIssue.description.imageDataUri),
+        generalNotes: data.description_generalNotes,
+      };
+
+      const updatedIssue: Issue = {
+        ...existingIssue,
+        title: data.title,
+        status: data.status,
+        priority: data.priority,
         assignee: data.assignee === UNASSIGNED_FORM_VALUE ? undefined : data.assignee,
+        description: newDescription,
         updatedAt: new Date().toISOString(),
       };
       issuesDB[issueIndex] = updatedIssue;
       
       revalidatePath('/'); 
       return { status: 'success', message: 'Issue updated successfully.', issue: updatedIssue };
-    } catch (error)
-     {
+    } catch (error) {
       console.error('Error updating issue:', error);
       return { status: 'error', message: 'Failed to update issue.' };
     }
   }
 
-// ---- Create Issue Direct Action ----
 export interface CreateIssueDirectActionState {
   status: 'idle' | 'success' | 'error';
   message: string;
@@ -263,7 +268,17 @@ const createIssueDirectSchema = z.object({
   title: z.string().min(1, 'Title is required.'),
   status: z.custom<IssueStatus>((val) => issueStatuses.includes(val as IssueStatus), "Invalid status value"),
   priority: z.custom<IssuePriority>((val) => issuePriorities.includes(val as IssuePriority), "Invalid priority value"),
-  assignee: z.string().optional(), // Will be name, UNASSIGNED_FORM_VALUE, or empty string if not selected
+  assignee: z.string().optional(),
+  description_apiName: z.string().optional(),
+  description_method: z.string().optional(), // Accepts API_METHOD_NA_FORM_VALUE or actual methods
+  description_payload: z.string().optional(),
+  description_response: z.string().optional(),
+  description_responseCode: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
+    z.number().int().optional()
+  ),
+  description_imageDataUri: z.string().optional(),
+  description_generalNotes: z.string().optional(),
 });
 
 export async function createIssueDirectAction(
@@ -275,6 +290,13 @@ export async function createIssueDirectAction(
     status: formData.get('status'),
     priority: formData.get('priority'),
     assignee: formData.get('assignee'),
+    description_apiName: formData.get('description_apiName'),
+    description_method: formData.get('description_method'),
+    description_payload: formData.get('description_payload'),
+    description_response: formData.get('description_response'),
+    description_responseCode: formData.get('description_responseCode'),
+    description_imageDataUri: formData.get('description_imageDataUri'),
+    description_generalNotes: formData.get('description_generalNotes'),
   };
 
   const validatedFields = createIssueDirectSchema.safeParse(rawData);
@@ -289,7 +311,7 @@ export async function createIssueDirectAction(
     }
     return {
       status: 'error',
-      message: errorMessages.trim().slice(0, -1), // Remove trailing semicolon
+      message: errorMessages.trim().slice(0, -1),
     };
   }
 
@@ -297,10 +319,27 @@ export async function createIssueDirectAction(
 
   try {
     const newIssueId = generateNewIssueId(issuesDB);
+    
+    let actualApiMethod: ApiMethod | undefined = undefined;
+    if (data.description_method && data.description_method !== API_METHOD_NA_FORM_VALUE) {
+      actualApiMethod = data.description_method as ApiMethod;
+    }
+    // If description_method is API_METHOD_NA_FORM_VALUE or empty, actualApiMethod remains undefined.
+
+    const newDescription: IssueDescription = {
+      apiName: data.description_apiName,
+      method: actualApiMethod,
+      payload: data.description_payload,
+      response: data.description_response,
+      responseCode: data.description_responseCode,
+      imageDataUri: data.description_imageDataUri,
+      generalNotes: data.description_generalNotes,
+    };
+
     const newIssue: Issue = {
       id: newIssueId,
       title: data.title,
-      description: '', // Default to empty description for direct form
+      description: newDescription,
       status: data.status,
       priority: data.priority,
       assignee: (data.assignee === UNASSIGNED_FORM_VALUE || data.assignee === '') ? undefined : data.assignee,
@@ -328,14 +367,10 @@ export async function createIssueDirectAction(
   }
 }
 
-
-// Function to get current issues (simulates fetching from DB/Sheets)
 export async function getIssues(): Promise<Issue[]> {
-    // In a real app, fetch from Google Sheets or database
     return Promise.resolve(issuesDB);
 }
 
-// ---- Delete Issue Action ----
 export interface DeleteIssueActionState {
   status: 'idle' | 'success' | 'error';
   message: string;
@@ -359,18 +394,14 @@ export async function deleteIssueAction(
       message: validatedFields.error.flatten().fieldErrors.issueId?.[0] || 'Invalid input for deletion.',
     };
   }
-
   const { issueId } = validatedFields.data;
-
   try {
     const issueIndex = issuesDB.findIndex(issue => issue.id === issueId);
     if (issueIndex === -1) {
       return { status: 'error', message: `Issue ${issueId} not found.` };
     }
-
     issuesDB.splice(issueIndex, 1); 
     revalidatePath('/'); 
-
     return { status: 'success', message: `Issue ${issueId} deleted successfully.` };
   } catch (error) {
     console.error('Error deleting issue:', error);
@@ -378,11 +409,7 @@ export async function deleteIssueAction(
   }
 }
 
-
-// ---- Assignee Management Actions ----
-
 export async function getAssignees(): Promise<string[]> {
-  // In a real app, this might fetch from a dedicated table or a specific sheet
   return Promise.resolve(assigneesDB);
 }
 
@@ -413,9 +440,7 @@ export async function addAssigneeAction(
   if (assigneesDB.includes(assigneeName)) {
     return { status: 'error', message: `Assignee "${assigneeName}" already exists.` };
   }
-
   assigneesDB.push(assigneeName);
-  // assigneesDB.sort(); // Optional: keep the list sorted
   revalidatePath('/');
   return { status: 'success', message: `Assignee "${assigneeName}" added.` };
 }
@@ -443,15 +468,11 @@ export async function deleteAssigneeAction(
     };
   }
   const { assigneeName } = validatedFields.data;
-
   const index = assigneesDB.indexOf(assigneeName);
   if (index === -1) {
     return { status: 'error', message: `Assignee "${assigneeName}" not found.` };
   }
-
   assigneesDB.splice(index, 1);
   revalidatePath('/');
-  // Note: This doesn't unassign issues from the deleted assignee.
-  // That would require iterating through issuesDB and updating them.
   return { status: 'success', message: `Assignee "${assigneeName}" deleted.` };
 }

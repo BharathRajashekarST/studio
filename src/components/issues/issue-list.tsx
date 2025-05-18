@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Issue, IssuePriority, IssueStatus } from '@/lib/types';
 import { issueStatuses, issuePriorities } from '@/lib/types';
-import { ArrowUpDown, Edit, FilterX, ListFilter, Trash2 } from 'lucide-react'; // Added Trash2
+import { ArrowUpDown, Edit, FilterX, Eye, Trash2 } from 'lucide-react'; 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format, parseISO } from 'date-fns';
@@ -23,13 +23,14 @@ import { format, parseISO } from 'date-fns';
 interface IssueListProps {
   issues: Issue[];
   onEditIssue: (issue: Issue) => void;
-  onDeleteIssue: (issueId: string) => void; // Added onDeleteIssue prop
+  onDeleteIssue: (issueId: string) => void;
+  onViewIssueDetails: (issue: Issue) => void; // New prop
 }
 
 type SortKey = keyof Issue | '';
 type SortOrder = 'asc' | 'desc';
 
-export function IssueList({ issues, onEditIssue, onDeleteIssue }: IssueListProps) {
+export function IssueList({ issues, onEditIssue, onDeleteIssue, onViewIssueDetails }: IssueListProps) {
   const [filterText, setFilterText] = React.useState('');
   const [filterStatus, setFilterStatus] = React.useState<IssueStatus | 'all'>('all');
   const [filterPriority, setFilterPriority] = React.useState<IssuePriority | 'all'>('all');
@@ -53,7 +54,7 @@ export function IssueList({ issues, onEditIssue, onDeleteIssue }: IssueListProps
         (issue) =>
           issue.title.toLowerCase().includes(filterText.toLowerCase()) ||
           issue.id.toLowerCase().includes(filterText.toLowerCase()) ||
-          (issue.description && issue.description.toLowerCase().includes(filterText.toLowerCase()))
+          (issue.description.generalNotes && issue.description.generalNotes.toLowerCase().includes(filterText.toLowerCase()))
       );
     }
 
@@ -82,8 +83,11 @@ export function IssueList({ issues, onEditIssue, onDeleteIssue }: IssueListProps
         comparison = valA.localeCompare(valB);
       } else if (typeof valA === 'number' && typeof valB === 'number') {
         comparison = valA - valB;
+      } else if (sortKey === 'description') { // Special handling for description object
+        const descA = (valA as Issue['description'])?.generalNotes || '';
+        const descB = (valB as Issue['description'])?.generalNotes || '';
+        comparison = descA.localeCompare(descB);
       } else {
-         // Fallback for dates or mixed types by converting to string
         comparison = String(valA).localeCompare(String(valB));
       }
       return sortOrder === 'asc' ? comparison : comparison * -1;
@@ -93,7 +97,7 @@ export function IssueList({ issues, onEditIssue, onDeleteIssue }: IssueListProps
   const getPriorityBadgeVariant = (priority: IssuePriority) => {
     switch (priority) {
       case 'Urgent': return 'destructive';
-      case 'High': return 'default'; // Primary color
+      case 'High': return 'default';
       case 'Medium': return 'secondary';
       case 'Low': return 'outline';
       default: return 'outline';
@@ -127,32 +131,24 @@ export function IssueList({ issues, onEditIssue, onDeleteIssue }: IssueListProps
       <CardContent>
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 items-end">
           <Input
-            placeholder="Filter by ID, title, description..."
+            placeholder="Filter by ID, title, notes..."
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             className="text-base"
             aria-label="Filter issues by text"
           />
           <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as IssueStatus | 'all')}>
-            <SelectTrigger aria-label="Filter by status">
-              <SelectValue placeholder="Filter by Status" />
-            </SelectTrigger>
+            <SelectTrigger aria-label="Filter by status"><SelectValue placeholder="Filter by Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
-              {issueStatuses.map((status) => (
-                <SelectItem key={status} value={status}>{status}</SelectItem>
-              ))}
+              {issueStatuses.map((status) => (<SelectItem key={status} value={status}>{status}</SelectItem>))}
             </SelectContent>
           </Select>
           <Select value={filterPriority} onValueChange={(value) => setFilterPriority(value as IssuePriority | 'all')}>
-            <SelectTrigger aria-label="Filter by priority">
-              <SelectValue placeholder="Filter by Priority" />
-            </SelectTrigger>
+            <SelectTrigger aria-label="Filter by priority"><SelectValue placeholder="Filter by Priority" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Priorities</SelectItem>
-              {issuePriorities.map((priority) => (
-                <SelectItem key={priority} value={priority}>{priority}</SelectItem>
-              ))}
+              {issuePriorities.map((priority) => (<SelectItem key={priority} value={priority}>{priority}</SelectItem>))}
             </SelectContent>
           </Select>
            <Button onClick={resetFilters} variant="outline" className="w-full sm:w-auto">
@@ -194,13 +190,14 @@ export function IssueList({ issues, onEditIssue, onDeleteIssue }: IssueListProps
                       </span>
                     </TableCell>
                     <TableCell>
-                       <Badge variant={getPriorityBadgeVariant(issue.priority)} className="text-xs">
-                        {issue.priority}
-                      </Badge>
+                       <Badge variant={getPriorityBadgeVariant(issue.priority)} className="text-xs">{issue.priority}</Badge>
                     </TableCell>
                     <TableCell>{issue.assignee || 'Unassigned'}</TableCell>
                     <TableCell>{format(parseISO(issue.updatedAt), 'MMM d, yyyy')}</TableCell>
-                    <TableCell className="space-x-1">
+                    <TableCell className="space-x-1 whitespace-nowrap">
+                      <Button variant="ghost" size="icon" onClick={() => onViewIssueDetails(issue)} aria-label={`View details for ${issue.id}`}>
+                        <Eye className="h-4 w-4 text-blue-600" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => onEditIssue(issue)} aria-label={`Edit issue ${issue.id}`}>
                         <Edit className="h-4 w-4 text-primary" />
                       </Button>
