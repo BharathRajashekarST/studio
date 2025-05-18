@@ -1,13 +1,14 @@
+
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { useFormState } from 'react-dom';
+import React, { useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Loader2, Send, Terminal } from 'lucide-react';
 import { processIssueCommandAction, type CommandActionState } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const initialState: CommandActionState = {
   status: 'idle',
@@ -15,7 +16,7 @@ const initialState: CommandActionState = {
 };
 
 export function IssueCommandBar({ onCommandProcessed }: { onCommandProcessed?: (updatedIssueId?: string) => void }) {
-  const [state, formAction] = useFormState(processIssueCommandAction, initialState);
+  const [state, formAction] = React.useActionState(processIssueCommandAction, initialState);
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -50,7 +51,7 @@ export function IssueCommandBar({ onCommandProcessed }: { onCommandProcessed?: (
           AI Command Bar
         </CardTitle>
         <CardDescription>
-          Type commands like &quot;Update status of SF-001 to Done&quot; or &quot;Assign SF-002 to Bob The Builder&quot;.
+          Type commands like &quot;Create new issue: Fix login button, priority High&quot;, &quot;Update status of SF-001 to Done&quot;, or &quot;Assign SF-002 to Bob The Builder&quot;.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -85,13 +86,5 @@ export function IssueCommandBar({ onCommandProcessed }: { onCommandProcessed?: (
 }
 
 function SubmitButtonContent() {
-  // useFormStatus is not available in React 18.3.1 with Next.js App Router server actions' useFormState in this manner
-  // For now, we will not show a pending state on the button itself without more complex state management.
-  // We can use a loading state from the form state if we adjust the action.
-  // const { pending } = useFormStatus(); 
-  // return pending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />;
   return <Send className="h-5 w-5" />;
 }
-
-// Add Card components if not globally available
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

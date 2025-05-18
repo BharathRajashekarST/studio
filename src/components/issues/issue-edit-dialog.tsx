@@ -1,5 +1,5 @@
 'use client';
-
+import { useActionState } from 'react';
 import { useEffect, useState } from 'react';
 import { useFormState } from 'react-dom';
 import { Button } from '@/components/ui/button';
@@ -41,16 +41,15 @@ const initialState: UpdateIssueActionState = {
 };
 
 export function IssueEditDialog({ issue, isOpen, onOpenChange, onIssueUpdated }: IssueEditDialogProps) {
-  const [state, formAction] = useFormState(updateIssueAction, initialState);
+  const [state, formAction] = useActionState(updateIssueAction, initialState);
   const { toast } = useToast();
-  const [currentAssignee, setCurrentAssignee] = useState(issue?.assignee || "");
+  const [currentAssignee, setCurrentAssignee] = useState(issue?.assignee || "unassigned");
 
   useEffect(() => {
     if (issue) {
-      setCurrentAssignee(issue.assignee || "");
+      setCurrentAssignee(issue.assignee || "unassigned");
     }
   }, [issue]);
-
   useEffect(() => {
     if (state.status === 'success') {
       toast({
@@ -143,7 +142,7 @@ export function IssueEditDialog({ issue, isOpen, onOpenChange, onIssueUpdated }:
                   <SelectValue placeholder="Select assignee" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Unassigned</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
                   {mockAssignees.map((assigneeName) => (
                     <SelectItem key={assigneeName} value={assigneeName}>
                       {assigneeName}
