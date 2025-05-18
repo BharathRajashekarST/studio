@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
-import { Button } from '@/components/ui/button'; // For the delete button in AlertDialog
+import { Button } from '@/components/ui/button';
 
 const initialDeleteState: DeleteIssueActionState = {
   status: 'idle',
@@ -64,6 +64,8 @@ export default function HomePage() {
       setIssueToDeleteId(null);
     } else if (deleteState.status === 'error') {
       toast({ title: "Error", description: deleteState.message, variant: "destructive" });
+      // Optionally, close dialog on error too, or leave it open for user to see context / retry
+      // setIsDeleteDialogOpen(false); 
     }
   }, [deleteState, toast, fetchAndSetIssues]);
 
@@ -93,15 +95,6 @@ export default function HomePage() {
   const handleCloseDeleteDialog = () => {
     setIssueToDeleteId(null);
     setIsDeleteDialogOpen(false);
-  };
-
-  const handleDeleteFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); // Prevent default form submission
-    if (issueToDeleteId) {
-      const formData = new FormData();
-      formData.append('issueId', issueToDeleteId);
-      deleteFormAction(formData);
-    }
   };
 
   return (
@@ -142,11 +135,9 @@ export default function HomePage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={handleCloseDeleteDialog}>Cancel</AlertDialogCancel>
-              <form onSubmit={handleDeleteFormSubmit}>
+              <form action={deleteFormAction}>
                 <input type="hidden" name="issueId" value={issueToDeleteId} />
-                <Button type="submit" variant="destructive" asChild>
-                  <AlertDialogAction>Delete</AlertDialogAction>
-                </Button>
+                <Button type="submit" variant="destructive">Delete</Button>
               </form>
             </AlertDialogFooter>
           </AlertDialogContent>
