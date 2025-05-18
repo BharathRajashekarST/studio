@@ -209,23 +209,29 @@ export async function updateIssueAction(
       try {
           const flatErrors = validatedFields.error.flatten();
           const messages: string[] = [];
-          // Field errors
-          for (const field in flatErrors.fieldErrors) {
-              const fieldMessages = (flatErrors.fieldErrors as any)[field];
+          
+          if (flatErrors.formErrors.length > 0) {
+              messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
+          }
+
+          for (const [field, fieldMessages] of Object.entries(flatErrors.fieldErrors)) {
               if (fieldMessages && fieldMessages.length > 0) {
                   messages.push(`${field.replace(/^description_/, 'Description ')}: ${fieldMessages.join(', ')}`);
               }
           }
-          // Form-level errors
-          if (flatErrors.formErrors.length > 0) {
-              messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
-          }
+          
           if (messages.length > 0) {
               detailedMessage = messages.join('; ');
+          } else if (validatedFields.error.issues.length > 0) {
+            detailedMessage = validatedFields.error.issues.map(issue => `${issue.path.join('.') || 'Form'}: ${issue.message}`).join('; ') || "Validation failed with unknown Zod issues.";
+          } else {
+            detailedMessage = "Validation failed without specific error messages.";
           }
       } catch (e) {
           console.error("Error constructing Zod error message for update:", e);
-          detailedMessage = "Validation failed, and there was an issue formatting the error details.";
+          detailedMessage = "Validation failed, and there was an issue formatting the error details. Check server logs for Zod error.";
+          if (e instanceof Error) console.error("Formatting error stack:", e.stack);
+          console.error("Original Zod error object:", JSON.stringify(validatedFields.error.format(), null, 2));
       }
       return {
           status: 'error',
@@ -253,10 +259,10 @@ export async function updateIssueAction(
         method: actualApiMethod,
         payload: data.description_payload || undefined,
         response: data.description_response || undefined,
-        responseCode: data.description_responseCode === null || data.description_responseCode === undefined || isNaN(Number(data.description_responseCode)) ? undefined : Number(data.description_responseCode),
+        responseCode: data.description_responseCode, // Already number or undefined from Zod
         imageDataUri: data.description_imageDataUri_clear === "true" 
                         ? undefined 
-                        : (data.description_imageDataUri || existingIssue.description.imageDataUri), // Prioritize new if provided, else keep existing
+                        : (data.description_imageDataUri || existingIssue.description.imageDataUri),
         generalNotes: data.description_generalNotes || undefined,
       };
 
@@ -328,23 +334,29 @@ export async function createIssueDirectAction(
       try {
           const flatErrors = validatedFields.error.flatten();
           const messages: string[] = [];
-          // Field errors
-          for (const field in flatErrors.fieldErrors) {
-              const fieldMessages = (flatErrors.fieldErrors as any)[field]; // Type assertion for direct access
+          
+          if (flatErrors.formErrors.length > 0) {
+              messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
+          }
+          
+          for (const [field, fieldMessages] of Object.entries(flatErrors.fieldErrors)) {
               if (fieldMessages && fieldMessages.length > 0) {
                   messages.push(`${field.replace(/^description_/, 'Description ')}: ${fieldMessages.join(', ')}`);
               }
           }
-          // Form-level errors
-          if (flatErrors.formErrors.length > 0) {
-              messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
-          }
+          
           if (messages.length > 0) {
               detailedMessage = messages.join('; ');
+          } else if (validatedFields.error.issues.length > 0) {
+            detailedMessage = validatedFields.error.issues.map(issue => `${issue.path.join('.') || 'Form'}: ${issue.message}`).join('; ') || "Validation failed with unknown Zod issues.";
+          } else {
+            detailedMessage = "Validation failed without specific error messages.";
           }
       } catch (e) {
           console.error("Error constructing Zod error message for create:", e);
-          detailedMessage = "Validation failed, and there was an issue formatting the error details.";
+          detailedMessage = "Validation failed, and there was an issue formatting the error details. Check server logs for Zod error.";
+          if (e instanceof Error) console.error("Formatting error stack:", e.stack);
+          console.error("Original Zod error object:", JSON.stringify(validatedFields.error.format(), null, 2));
       }
       return {
           status: 'error',
@@ -367,7 +379,7 @@ export async function createIssueDirectAction(
       method: actualApiMethod,
       payload: data.description_payload || undefined,
       response: data.description_response || undefined,
-      responseCode: data.description_responseCode === null || data.description_responseCode === undefined || isNaN(Number(data.description_responseCode)) ? undefined : Number(data.description_responseCode),
+      responseCode: data.description_responseCode, // Already number or undefined from Zod
       imageDataUri: data.description_imageDataUri || undefined,
       generalNotes: data.description_generalNotes || undefined,
     };
@@ -404,6 +416,8 @@ export async function createIssueDirectAction(
 }
 
 export async function getIssues(): Promise<Issue[]> {
+    // Simulate network delay
+    // await new Promise(resolve => setTimeout(resolve, 500));
     return Promise.resolve(issuesDB);
 }
 
@@ -445,8 +459,10 @@ export async function deleteIssueAction(
   }
 }
 
+// --- Assignee Management ---
 export async function getAssignees(): Promise<string[]> {
-  return Promise.resolve(assigneesDB);
+  // await new Promise(resolve => setTimeout(resolve, 300));
+  return Promise.resolve([...assigneesDB]); // Return a copy
 }
 
 export interface AddAssigneeActionState {
@@ -512,3 +528,5 @@ export async function deleteAssigneeAction(
   revalidatePath('/');
   return { status: 'success', message: `Assignee "${assigneeName}" deleted.` };
 }
+
+    
