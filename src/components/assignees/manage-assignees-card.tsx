@@ -2,7 +2,8 @@
 'use client';
 
 import * as React from 'react';
-import { useFormStatus, useActionState } from 'react-dom';
+import { useFormStatus } from 'react-dom';
+import { useActionState } from 'react'; // Changed from 'react-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
