@@ -1,3 +1,4 @@
+
 // src/ai/flows/interpret-issue-command.ts
 'use server';
 
@@ -66,14 +67,15 @@ const interpretIssueCommandPrompt = ai.definePrompt({
 User Command: "{{{command}}}"
 Contextual Issue ID (this is ONLY a fallback if the command itself doesn't specify an issue ID for an update/assignment action, and should be ignored if it's a placeholder like 'NO_CONTEXT_ID' or 'CREATE_CONTEXT'): "{{{issueId}}}"
 
-Based on the User Command, determine the 'action' and extract relevant details. For 'createIssue', capture the entire string within single or double quotes as the 'title', even if it contains commas.
+Based on the User Command, determine the 'action' and extract relevant details.
 
 Possible Actions & Expected Fields in Output:
 - 'createIssue': If the command is to create a new issue.
-    - Extract: 'title' (required), 'description' (optional), 'assignee' (optional), 'status' (optional, defaults to 'To Do' if not specified), 'priority' (optional, defaults to 'Medium' if not specified).
+    - The 'title' MUST be ONLY the content extracted from the first single or double quoted string in the command. For example, if the command is "create issue 'Fix the login button' with high priority", the title is 'Fix the login button'.
+    - After extracting the title, parse the remainder of the command for 'description' (optional), 'assignee' (optional, e.g., from "assign to John Doe" or "assign to unassigned"), 'status' (optional, defaults to 'To Do' if not specified, e.g., from "status In Progress"), 'priority' (optional, defaults to 'Medium' if not specified, e.g., from "priority High").
     - The 'issueId' field in the output should be omitted for 'createIssue' as it's system-generated.
 - 'assignIssue': If the command is to assign an existing issue to someone.
-    - Extract: 'issueId' (the ID of the issue to assign, e.g., "SF-001", parsed from the command), 'assignee' (required).
+    - Extract: 'issueId' (the ID of the issue to assign, e.g., "SF-001", parsed from the command), 'assignee' (required, e.g., from "assign to John Doe" or "assign to unassigned").
 - 'updateIssueStatus': If the command is to change the status of an existing issue.
     - Extract: 'issueId' (the ID of the issue to update, parsed from the command), 'status' (required, e.g., "Done", "In Progress").
 - 'updateIssuePriority': If the command is to change the priority of an existing issue.
@@ -85,7 +87,8 @@ Possible Actions & Expected Fields in Output:
 
 General Instructions:
 - If the User Command explicitly mentions an issue ID (like "SF-001", "ticket 123"), use that as the 'issueId' in your output for update/assign actions.
-- If the User Command is an update/assign action but doesn't specify an issue ID, AND a 'Contextual Issue ID' ({{{issueId}}}) is available and not a placeholder (like 'NO_CONTEXT_ID', 'CREATE_CONTEXT'), you may use that 'Contextual Issue ID' as the 'issueId' in your output. Otherwise, if no ID is found for an update/assign action, the command may be unfulfillable (in such case, try to indicate this, e.g. by not setting issueId if it's truly ambiguous).
+- If the User Command is an update/assign action but doesn't specify an issue ID, AND a 'Contextual Issue ID' ({{{issueId}}}) is available and not a placeholder (like 'NO_CONTEXT_ID', 'CREATE_CONTEXT'), you may use that 'Contextual Issue ID' as the 'issueId' in your output. Otherwise, if no ID is found for an update/assign action, the command may be unfulfillable.
+- If an assignee is explicitly stated as "unassigned" in the command (e.g., "assign to unassigned"), the 'assignee' field in the output should be the string "unassigned".
 - Only include fields in the JSON output that are relevant to the detected action and have been extracted from the command. Omit fields if the information is not present or not applicable.
 - Ensure the output is valid JSON.
 `,
@@ -102,6 +105,12 @@ const interpretIssueCommandFlow = ai.defineFlow(
     if (!output) {
       throw new Error('AI interpretation failed to produce a valid output based on the schema.');
     }
+    // For createIssue, ensure title is present
+    if (output.action === 'createIssue' && (!output.title || output.title.trim() === '')) {
+        // If AI failed to extract a title for createIssue, even after prompt guidance
+        throw new Error("AI interpretation failed: Title is missing for 'createIssue' action.");
+    }
     return output;
   }
 );
+
