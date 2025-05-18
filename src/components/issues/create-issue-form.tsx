@@ -10,12 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { issueStatuses, issuePriorities, type IssueStatus, type IssuePriority } from '@/lib/types';
-import { assignees as mockAssignees } from '@/lib/mock-data';
+// import { assignees as mockAssignees } from '@/lib/mock-data'; // Removed direct import
 import { createIssueDirectAction, type CreateIssueDirectActionState } from '@/lib/actions'; // Updated action
 import { useToast } from '@/hooks/use-toast';
 
 interface CreateIssueFormProps {
   onIssueCreated?: (newIssueId?: string) => void;
+  assignees: string[]; // Added assignees prop
 }
 
 const initialState: CreateIssueDirectActionState = {
@@ -35,7 +36,7 @@ function SubmitButton() {
   );
 }
 
-export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
+export function CreateIssueForm({ onIssueCreated, assignees }: CreateIssueFormProps) {
   const [title, setTitle] = React.useState('');
   const [currentAssignee, setCurrentAssignee] = React.useState<string>(''); 
   const [currentStatus, setCurrentStatus] = React.useState<IssueStatus>('To Do');
@@ -69,7 +70,7 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
   }, [state, toast, onIssueCreated]);
 
   return (
-    <div className="mt-8 p-6 border rounded-lg shadow-lg bg-card">
+    <div className="p-6 border rounded-lg shadow-lg bg-card h-full">
       <h3 className="text-xl font-semibold mb-6 text-card-foreground">Create New Issue</h3>
       <form action={formAction} ref={formRef} className="space-y-6">
         
@@ -123,7 +124,7 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={UNASSIGNED_SELECT_VALUE}>Unassigned</SelectItem>
-                {mockAssignees.map((assigneeName) => (
+                {assignees.map((assigneeName) => (
                   <SelectItem key={assigneeName} value={assigneeName}>
                     {assigneeName}
                   </SelectItem>

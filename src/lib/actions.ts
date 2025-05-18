@@ -6,10 +6,11 @@ import { interpretIssueCommand, type InterpretIssueCommandOutput } from '@/ai/fl
 import type { Issue, IssuePriority, IssueStatus } from '@/lib/types';
 import { issuePriorities, issueStatuses } from '@/lib/types'; // Import for validation
 import { revalidatePath } from 'next/cache';
+import { assignees as assigneesDB, initialIssues } from '@/lib/mock-data'; // Import assigneesDB
 
 // Simulate a database or Google Sheets API
 // In a real app, this would interact with Google Sheets or a database.
-let issuesDB: Issue[] = (await import('@/lib/mock-data')).initialIssues;
+let issuesDB: Issue[] = initialIssues;
 
 
 export interface CommandActionState {
@@ -375,4 +376,82 @@ export async function deleteIssueAction(
     console.error('Error deleting issue:', error);
     return { status: 'error', message: 'Failed to delete issue. Please try again.' };
   }
+}
+
+
+// ---- Assignee Management Actions ----
+
+export async function getAssignees(): Promise<string[]> {
+  // In a real app, this might fetch from a dedicated table or a specific sheet
+  return Promise.resolve(assigneesDB);
+}
+
+export interface AddAssigneeActionState {
+  status: 'idle' | 'success' | 'error';
+  message: string;
+}
+const addAssigneeSchema = z.object({
+  assigneeName: z.string().min(1, 'Assignee name cannot be empty.').max(50, 'Assignee name too long.'),
+});
+
+export async function addAssigneeAction(
+  prevState: AddAssigneeActionState,
+  formData: FormData
+): Promise<AddAssigneeActionState> {
+  const validatedFields = addAssigneeSchema.safeParse({
+    assigneeName: formData.get('assigneeName'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      status: 'error',
+      message: validatedFields.error.flatten().fieldErrors.assigneeName?.[0] || 'Invalid assignee name.',
+    };
+  }
+  const { assigneeName } = validatedFields.data;
+
+  if (assigneesDB.includes(assigneeName)) {
+    return { status: 'error', message: `Assignee "${assigneeName}" already exists.` };
+  }
+
+  assigneesDB.push(assigneeName);
+  // assigneesDB.sort(); // Optional: keep the list sorted
+  revalidatePath('/');
+  return { status: 'success', message: `Assignee "${assigneeName}" added.` };
+}
+
+export interface DeleteAssigneeActionState {
+  status: 'idle' | 'success' | 'error';
+  message: string;
+}
+const deleteAssigneeSchema = z.object({
+  assigneeName: z.string().min(1, 'Assignee name is required.'),
+});
+
+export async function deleteAssigneeAction(
+  prevState: DeleteAssigneeActionState,
+  formData: FormData
+): Promise<DeleteAssigneeActionState> {
+  const validatedFields = deleteAssigneeSchema.safeParse({
+    assigneeName: formData.get('assigneeName'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      status: 'error',
+      message: validatedFields.error.flatten().fieldErrors.assigneeName?.[0] || 'Invalid assignee name for deletion.',
+    };
+  }
+  const { assigneeName } = validatedFields.data;
+
+  const index = assigneesDB.indexOf(assigneeName);
+  if (index === -1) {
+    return { status: 'error', message: `Assignee "${assigneeName}" not found.` };
+  }
+
+  assigneesDB.splice(index, 1);
+  revalidatePath('/');
+  // Note: This doesn't unassign issues from the deleted assignee.
+  // That would require iterating through issuesDB and updating them.
+  return { status: 'success', message: `Assignee "${assigneeName}" deleted.` };
 }

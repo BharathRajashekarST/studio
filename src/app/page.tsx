@@ -7,13 +7,13 @@ import { IssueCommandBar } from '@/components/issues/issue-command-bar';
 import { IssueList } from '@/components/issues/issue-list';
 import { IssueEditDialog } from '@/components/issues/issue-edit-dialog';
 import { CreateIssueForm } from '@/components/issues/create-issue-form';
+import { ManageAssigneesCard } from '@/components/assignees/manage-assignees-card'; // New component
 import type { Issue } from '@/lib/types';
-import { getIssues, deleteIssueAction, type DeleteIssueActionState } from '@/lib/actions'; // Server action to fetch issues
+import { getIssues, deleteIssueAction, type DeleteIssueActionState, getAssignees } from '@/lib/actions';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -30,9 +30,11 @@ const initialDeleteState: DeleteIssueActionState = {
 
 export default function HomePage() {
   const [issues, setIssues] = React.useState<Issue[]>([]);
+  const [assignees, setAssignees] = React.useState<string[]>([]);
   const [selectedIssue, setSelectedIssue] = React.useState<Issue | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [isLoadingIssues, setIsLoadingIssues] = React.useState(true);
+  const [isLoadingAssignees, setIsLoadingAssignees] = React.useState(true);
   const [issueToDeleteId, setIssueToDeleteId] = React.useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   
@@ -40,7 +42,7 @@ export default function HomePage() {
   const [deleteState, deleteFormAction] = React.useActionState(deleteIssueAction, initialDeleteState);
 
   const fetchAndSetIssues = React.useCallback(async () => {
-    setIsLoading(true);
+    setIsLoadingIssues(true);
     try {
       const fetchedIssues = await getIssues();
       setIssues(fetchedIssues);
@@ -48,13 +50,27 @@ export default function HomePage() {
       console.error("Failed to fetch issues:", error);
       toast({ title: "Error", description: "Failed to fetch issues.", variant: "destructive" });
     } finally {
-      setIsLoading(false);
+      setIsLoadingIssues(false);
+    }
+  }, [toast]);
+
+  const fetchAndSetAssignees = React.useCallback(async () => {
+    setIsLoadingAssignees(true);
+    try {
+      const fetchedAssignees = await getAssignees();
+      setAssignees(fetchedAssignees);
+    } catch (error) {
+      console.error("Failed to fetch assignees:", error);
+      toast({ title: "Error", description: "Failed to fetch assignees.", variant: "destructive" });
+    } finally {
+      setIsLoadingAssignees(false);
     }
   }, [toast]);
 
   React.useEffect(() => {
     fetchAndSetIssues();
-  }, [fetchAndSetIssues]);
+    fetchAndSetAssignees();
+  }, [fetchAndSetIssues, fetchAndSetAssignees]);
 
   React.useEffect(() => {
     if (deleteState.status === 'success') {
@@ -64,8 +80,6 @@ export default function HomePage() {
       setIssueToDeleteId(null);
     } else if (deleteState.status === 'error') {
       toast({ title: "Error", description: deleteState.message, variant: "destructive" });
-      // Optionally, close dialog on error too, or leave it open for user to see context / retry
-      // setIsDeleteDialogOpen(false); 
     }
   }, [deleteState, toast, fetchAndSetIssues]);
 
@@ -83,9 +97,15 @@ export default function HomePage() {
     fetchAndSetIssues(); 
   }, [fetchAndSetIssues]);
   
-  const handleCommandProcessed = React.useCallback((updatedIssueId?: string) => {
+  const handleCommandProcessed = React.useCallback(() => {
     fetchAndSetIssues();
   },[fetchAndSetIssues]);
+
+  const handleAssigneesUpdated = React.useCallback(() => {
+    fetchAndSetAssignees();
+     // Optionally, refresh issues if assignees affect them directly (e.g. unassigning)
+     // fetchAndSetIssues(); 
+  }, [fetchAndSetAssignees]);
 
   const handleOpenDeleteDialog = (id: string) => {
     setIssueToDeleteId(id);
@@ -97,14 +117,32 @@ export default function HomePage() {
     setIsDeleteDialogOpen(false);
   };
 
+  const isLoading = isLoadingIssues || isLoadingAssignees;
+
   return (
     <div className="container mx-auto px-4 py-6 sm:px-6 lg:px-8">
       <SheetFlowHeader />
       <main className="mt-8 space-y-8">
         <IssueCommandBar onCommandProcessed={handleCommandProcessed} />
-        <CreateIssueForm onIssueCreated={handleIssueUpdatedOrCreated} />
         
-        {isLoading ? (
+        {isLoadingAssignees ? (
+           <Skeleton className="h-48 w-full" />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2">
+              <CreateIssueForm 
+                onIssueCreated={handleIssueUpdatedOrCreated} 
+                assignees={assignees} 
+              />
+            </div>
+            <ManageAssigneesCard 
+              initialAssignees={assignees} 
+              onAssigneesUpdated={handleAssigneesUpdated} 
+            />
+          </div>
+        )}
+        
+        {isLoadingIssues ? (
           <div className="space-y-4">
             <Skeleton className="h-12 w-1/3" />
             <Skeleton className="h-8 w-full" />
@@ -121,6 +159,7 @@ export default function HomePage() {
           isOpen={isEditDialogOpen}
           onOpenChange={handleDialogClose}
           onIssueUpdated={handleIssueUpdatedOrCreated}
+          assignees={assignees}
         />
       )}
       {isDeleteDialogOpen && issueToDeleteId && (

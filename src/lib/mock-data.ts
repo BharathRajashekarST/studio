@@ -65,7 +65,8 @@ export const initialIssues: Issue[] = [
   },
 ];
 
-export const assignees: string[] = [
+// Made assignees a 'let' so it can be modified by actions
+export let assignees: string[] = [
   "Alice Wonderland",
   "Bob The Builder",
   "Charlie Brown",
