@@ -11,14 +11,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { issueStatuses, issuePriorities, type IssueStatus, type IssuePriority } from '@/lib/types';
 import { assignees as mockAssignees } from '@/lib/mock-data';
-import { processIssueCommandAction, type CommandActionState } from '@/lib/actions';
+import { createIssueDirectAction, type CreateIssueDirectActionState } from '@/lib/actions'; // Updated action
 import { useToast } from '@/hooks/use-toast';
 
 interface CreateIssueFormProps {
-  onIssueCreated?: (updatedIssueId?: string) => void;
+  onIssueCreated?: (newIssueId?: string) => void;
 }
 
-const initialState: CommandActionState = {
+const initialState: CreateIssueDirectActionState = {
   status: 'idle',
   message: '',
 };
@@ -37,24 +37,13 @@ function SubmitButton() {
 
 export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
   const [title, setTitle] = React.useState('');
-  // currentAssignee is empty string for placeholder, or UNASSIGNED_SELECT_VALUE, or actual assignee name
   const [currentAssignee, setCurrentAssignee] = React.useState<string>(''); 
   const [currentStatus, setCurrentStatus] = React.useState<IssueStatus>('To Do');
   const [currentPriority, setCurrentPriority] = React.useState<IssuePriority>('Medium');
   
-  const [state, formAction] = React.useActionState(processIssueCommandAction, initialState);
+  const [state, formAction] = React.useActionState(createIssueDirectAction, initialState);
   const { toast } = useToast();
   const formRef = React.useRef<HTMLFormElement>(null);
-
-  const commandValue = React.useMemo(() => {
-    if (!title.trim()) return ""; // Don't generate command if title is empty
-    
-    const assigneeForCommand = (currentAssignee === UNASSIGNED_SELECT_VALUE || !currentAssignee) 
-      ? 'unassigned' 
-      : currentAssignee;
-      
-    return `Create new issue: '${title.trim()}', assign to ${assigneeForCommand}, status ${currentStatus}, priority ${currentPriority}`;
-  }, [title, currentAssignee, currentStatus, currentPriority]);
 
   React.useEffect(() => {
     if (state.status === 'success') {
@@ -63,12 +52,12 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
         description: state.message,
       });
       setTitle('');
-      setCurrentAssignee(''); // Reset to empty to show placeholder
+      setCurrentAssignee(''); 
       setCurrentStatus('To Do');
       setCurrentPriority('Medium');
       formRef.current?.reset(); 
-      if (onIssueCreated && state.updatedIssueId) {
-        onIssueCreated(state.updatedIssueId);
+      if (onIssueCreated && state.newIssueId) {
+        onIssueCreated(state.newIssueId);
       }
     } else if (state.status === 'error') {
       toast({
@@ -83,13 +72,12 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
     <div className="mt-8 p-6 border rounded-lg shadow-lg bg-card">
       <h3 className="text-xl font-semibold mb-6 text-card-foreground">Create New Issue</h3>
       <form action={formAction} ref={formRef} className="space-y-6">
-        {/* Hidden input to pass the constructed command */}
-        <input type="hidden" name="command" value={commandValue} />
         
         <div className="space-y-2">
           <Label htmlFor="form-title" className="text-card-foreground">Title</Label>
           <Input 
-            id="form-title" 
+            id="form-title"
+            name="title" // Name for FormData
             value={title} 
             onChange={(e) => setTitle(e.target.value)} 
             placeholder="Enter issue title"
@@ -101,7 +89,7 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label htmlFor="form-status" className="text-card-foreground">Status</Label>
-            <Select value={currentStatus} onValueChange={(value: IssueStatus) => setCurrentStatus(value)}>
+            <Select name="status" value={currentStatus} onValueChange={(value: IssueStatus) => setCurrentStatus(value)}> {/* Name for FormData */}
               <SelectTrigger id="form-status" className="bg-background text-foreground">
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>
@@ -115,7 +103,7 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="form-priority" className="text-card-foreground">Priority</Label>
-            <Select value={currentPriority} onValueChange={(value: IssuePriority) => setCurrentPriority(value)}>
+            <Select name="priority" value={currentPriority} onValueChange={(value: IssuePriority) => setCurrentPriority(value)}> {/* Name for FormData */}
               <SelectTrigger id="form-priority" className="bg-background text-foreground">
                 <SelectValue placeholder="Select priority" />
               </SelectTrigger>
@@ -129,7 +117,7 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="form-assignee" className="text-card-foreground">Assignee</Label>
-            <Select value={currentAssignee} onValueChange={setCurrentAssignee}>
+            <Select name="assignee" value={currentAssignee} onValueChange={setCurrentAssignee}> {/* Name for FormData */}
               <SelectTrigger id="form-assignee" className="bg-background text-foreground">
                 <SelectValue placeholder="Select assignee" />
               </SelectTrigger>
@@ -152,4 +140,3 @@ export function CreateIssueForm({ onIssueCreated }: CreateIssueFormProps) {
     </div>
   );
 }
-

@@ -21,8 +21,6 @@ export interface CommandActionState {
 
 const commandSchema = z.object({
   command: z.string().min(1, 'Command cannot be empty.'),
-  // issueIdContext is optional from the form; if not provided, it's 'undefined'
-  // We'll pass a specific string like "NO_CONTEXT_ID" to the AI if it's not set.
 });
 
 // Helper function to generate a new issue ID
@@ -45,7 +43,6 @@ export async function processIssueCommandAction(
   formData: FormData
 ): Promise<CommandActionState> {
   const rawCommand = formData.get('command');
-  // issueIdContext is not explicitly sent by the command bar form, so it will be null.
   const issueIdContextFromForm = formData.get('issueIdContext') as string | null;
 
   const validatedFields = commandSchema.safeParse({
@@ -62,8 +59,6 @@ export async function processIssueCommandAction(
   const { command } = validatedFields.data;
 
   try {
-    // Pass "NO_CONTEXT_ID" if no specific context ID is available from the form/UI.
-    // The AI prompt is guided to parse IDs from the command string itself for updates.
     const interpretation = await interpretIssueCommand({ 
       command, 
       issueId: issueIdContextFromForm || "NO_CONTEXT_ID" 
@@ -82,7 +77,6 @@ export async function processIssueCommandAction(
         description: interpretation.description || '',
         status: (issueStatuses.includes(interpretation.status as IssueStatus) ? interpretation.status : 'To Do') as IssueStatus,
         priority: (issuePriorities.includes(interpretation.priority as IssuePriority) ? interpretation.priority : 'Medium') as IssuePriority,
-        // AI returns "unassigned" as string or actual name. Convert "unassigned" to undefined.
         assignee: interpretation.assignee === 'unassigned' || !interpretation.assignee ? undefined : interpretation.assignee, 
         reporter: 'AI Command Bar', 
         createdAt: new Date().toISOString(),
@@ -96,10 +90,9 @@ export async function processIssueCommandAction(
         status: 'success',
         message: `New issue ${newIssueId}: "${newIssue.title}" created.`,
         updatedIssueId,
-        interpretation, // Also return interpretation for create
+        interpretation, 
       };
     } else if (interpretation.issueId) {
-      // Actions that require an existing issueId
       const issueToUpdate = issuesDB.find(issue => issue.id === interpretation.issueId);
       if (!issueToUpdate) {
         return { status: 'error', message: `Issue ${interpretation.issueId} not found.`, interpretation };
@@ -107,7 +100,6 @@ export async function processIssueCommandAction(
       updatedIssueId = issueToUpdate.id;
 
       if (interpretation.action === 'assignIssue' && interpretation.assignee) {
-        // AI returns "unassigned" as string or actual name. Convert "unassigned" to undefined.
         issueToUpdate.assignee = interpretation.assignee === 'unassigned' || !interpretation.assignee ? undefined : interpretation.assignee;
         issueToUpdate.updatedAt = new Date().toISOString();
         revalidatePath('/');
@@ -201,7 +193,7 @@ const updateIssueSchema = z.object({
   description: z.string().optional(),
   status: z.custom<IssueStatus>((val) => issueStatuses.includes(val as IssueStatus), "Invalid status value"),
   priority: z.custom<IssuePriority>((val) => issuePriorities.includes(val as IssuePriority), "Invalid priority value"),
-  assignee: z.string().optional(), // This will receive the name or UNASSIGNED_FORM_VALUE
+  assignee: z.string().optional(), 
 });
 
 
@@ -215,7 +207,7 @@ export async function updateIssueAction(
       description: formData.get('description'),
       status: formData.get('status'),
       priority: formData.get('priority'),
-      assignee: formData.get('assignee'), // This will be string, e.g. "Bob", "_SELECT_UNASSIGNED_"
+      assignee: formData.get('assignee'), 
     };
 
     const validatedFields = updateIssueSchema.safeParse(rawData);
@@ -245,7 +237,6 @@ export async function updateIssueAction(
       const updatedIssue = {
         ...issuesDB[issueIndex],
         ...data,
-        // Convert our special form value for "unassigned" back to undefined for the data model
         assignee: data.assignee === UNASSIGNED_FORM_VALUE ? undefined : data.assignee,
         updatedAt: new Date().toISOString(),
       };
@@ -253,11 +244,89 @@ export async function updateIssueAction(
       
       revalidatePath('/'); 
       return { status: 'success', message: 'Issue updated successfully.', issue: updatedIssue };
-    } catch (error) {
+    } catch (error)
+     {
       console.error('Error updating issue:', error);
       return { status: 'error', message: 'Failed to update issue.' };
     }
   }
+
+// ---- Create Issue Direct Action ----
+export interface CreateIssueDirectActionState {
+  status: 'idle' | 'success' | 'error';
+  message: string;
+  newIssueId?: string;
+}
+
+const createIssueDirectSchema = z.object({
+  title: z.string().min(1, 'Title is required.'),
+  status: z.custom<IssueStatus>((val) => issueStatuses.includes(val as IssueStatus), "Invalid status value"),
+  priority: z.custom<IssuePriority>((val) => issuePriorities.includes(val as IssuePriority), "Invalid priority value"),
+  assignee: z.string().optional(), // Will be name, UNASSIGNED_FORM_VALUE, or empty string if not selected
+});
+
+export async function createIssueDirectAction(
+  prevState: CreateIssueDirectActionState,
+  formData: FormData
+): Promise<CreateIssueDirectActionState> {
+  const rawData = {
+    title: formData.get('title'),
+    status: formData.get('status'),
+    priority: formData.get('priority'),
+    assignee: formData.get('assignee'),
+  };
+
+  const validatedFields = createIssueDirectSchema.safeParse(rawData);
+
+  if (!validatedFields.success) {
+    let errorMessages = "Validation failed: ";
+    const fieldErrors = validatedFields.error.flatten().fieldErrors;
+    for (const key in fieldErrors) {
+        if (fieldErrors[key as keyof typeof fieldErrors]) {
+          errorMessages += `${key}: ${fieldErrors[key as keyof typeof fieldErrors]!.join(', ')}; `;
+        }
+    }
+    return {
+      status: 'error',
+      message: errorMessages.trim().slice(0, -1), // Remove trailing semicolon
+    };
+  }
+
+  const data = validatedFields.data;
+
+  try {
+    const newIssueId = generateNewIssueId(issuesDB);
+    const newIssue: Issue = {
+      id: newIssueId,
+      title: data.title,
+      description: '', // Default to empty description for direct form
+      status: data.status,
+      priority: data.priority,
+      assignee: (data.assignee === UNASSIGNED_FORM_VALUE || data.assignee === '') ? undefined : data.assignee,
+      reporter: 'Manual Form Entry', 
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      labels: [],
+    };
+
+    issuesDB.unshift(newIssue);
+    revalidatePath('/');
+
+    return {
+      status: 'success',
+      message: `New issue ${newIssueId}: "${newIssue.title}" created directly.`,
+      newIssueId: newIssueId,
+    };
+  } catch (error) {
+    console.error('Error creating issue directly:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create issue directly.';
+    return {
+      status: 'error',
+      message: errorMessage,
+    };
+  }
+}
+
 
 // Function to get current issues (simulates fetching from DB/Sheets)
 export async function getIssues(): Promise<Issue[]> {
@@ -298,8 +367,8 @@ export async function deleteIssueAction(
       return { status: 'error', message: `Issue ${issueId} not found.` };
     }
 
-    issuesDB.splice(issueIndex, 1); // Remove the issue from the array
-    revalidatePath('/'); // Revalidate the cache for the homepage
+    issuesDB.splice(issueIndex, 1); 
+    revalidatePath('/'); 
 
     return { status: 'success', message: `Issue ${issueId} deleted successfully.` };
   } catch (error) {
