@@ -74,7 +74,6 @@ export async function processIssueCommandAction(
         title: interpretation.title,
         description: { 
             generalNotes: interpretation.description || '',
-            // For AI commands, we are keeping API specific fields empty for now
             apiName: undefined,
             method: undefined,
             payload: undefined,
@@ -122,7 +121,6 @@ export async function processIssueCommandAction(
         issueToUpdate.priority = interpretation.priority as IssuePriority;
         issueToUpdate.updatedAt = new Date().toISOString();
       } else if (interpretation.action === 'updateIssueDescription' && typeof interpretation.description === 'string') {
-        // Ensure description object exists
         if (!issueToUpdate.description) {
             issueToUpdate.description = {};
         }
@@ -175,9 +173,9 @@ const updateIssueSchema = z.object({
   description_payload: z.string().optional().default(''),
   description_response: z.string().optional().default(''),
   description_responseCode: z.preprocess(
-    (val) => (val === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
-    z.number().int().optional().nullable() // Allow null from parseInt if input is not a number initially
-  ).refine(val => val === undefined || val === null || !isNaN(val), { message: "Response code must be a valid number if provided."}),
+    (val) => (String(val).trim() === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
+    z.number().int().optional().nullable()
+  ).refine(val => val === undefined || val === null || !isNaN(val), { message: "Response code must be a valid integer if provided."}),
   description_imageDataUri: z.string().optional(), 
   description_imageDataUri_clear: z.string().optional(), 
   description_generalNotes: z.string().optional().default(''),
@@ -207,14 +205,31 @@ export async function updateIssueAction(
     const validatedFields = updateIssueSchema.safeParse(rawData);
 
     if (!validatedFields.success) {
-      const formattedErrors = validatedFields.error.errors.map(e => {
-        const path = e.path.join('.');
-        // For root level errors, path might be empty. For field errors, it'll be like 'fieldName'.
-        return path ? `${path}: ${e.message}` : e.message; 
-      }).join('; ');
+      let detailedMessage = 'Unknown validation error.';
+      try {
+          const flatErrors = validatedFields.error.flatten();
+          const messages: string[] = [];
+          // Field errors
+          for (const field in flatErrors.fieldErrors) {
+              const fieldMessages = (flatErrors.fieldErrors as any)[field];
+              if (fieldMessages && fieldMessages.length > 0) {
+                  messages.push(`${field.replace(/^description_/, 'Description ')}: ${fieldMessages.join(', ')}`);
+              }
+          }
+          // Form-level errors
+          if (flatErrors.formErrors.length > 0) {
+              messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
+          }
+          if (messages.length > 0) {
+              detailedMessage = messages.join('; ');
+          }
+      } catch (e) {
+          console.error("Error constructing Zod error message for update:", e);
+          detailedMessage = "Validation failed, and there was an issue formatting the error details.";
+      }
       return {
-        status: 'error',
-        message: `Validation failed: ${formattedErrors || 'Unknown validation error.'}`,
+          status: 'error',
+          message: `Validation failed: ${detailedMessage}`,
       };
     }
 
@@ -234,14 +249,14 @@ export async function updateIssueAction(
       }
 
       const newDescription: IssueDescription = {
-        apiName: data.description_apiName || undefined, // Ensure empty strings become undefined if desired
+        apiName: data.description_apiName || undefined,
         method: actualApiMethod,
         payload: data.description_payload || undefined,
         response: data.description_response || undefined,
-        responseCode: data.description_responseCode === null || isNaN(Number(data.description_responseCode)) ? undefined : Number(data.description_responseCode),
+        responseCode: data.description_responseCode === null || data.description_responseCode === undefined || isNaN(Number(data.description_responseCode)) ? undefined : Number(data.description_responseCode),
         imageDataUri: data.description_imageDataUri_clear === "true" 
                         ? undefined 
-                        : (data.description_imageDataUri || existingIssue.description.imageDataUri),
+                        : (data.description_imageDataUri || existingIssue.description.imageDataUri), // Prioritize new if provided, else keep existing
         generalNotes: data.description_generalNotes || undefined,
       };
 
@@ -260,7 +275,8 @@ export async function updateIssueAction(
       return { status: 'success', message: 'Issue updated successfully.', issue: updatedIssue };
     } catch (error) {
       console.error('Error updating issue:', error);
-      return { status: 'error', message: 'Failed to update issue.' };
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update issue.';
+      return { status: 'error', message: errorMessage };
     }
   }
 
@@ -280,9 +296,9 @@ const createIssueDirectSchema = z.object({
   description_payload: z.string().optional().default(''),
   description_response: z.string().optional().default(''),
   description_responseCode: z.preprocess(
-    (val) => (val === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
+    (val) => (String(val).trim() === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
     z.number().int().optional().nullable()
-  ).refine(val => val === undefined || val === null || !isNaN(val), { message: "Response code must be a valid number if provided."}),
+  ).refine(val => val === undefined || val === null || !isNaN(val), { message: "Response code must be a valid integer if provided."}),
   description_imageDataUri: z.string().optional(),
   description_generalNotes: z.string().optional().default(''),
 });
@@ -308,13 +324,31 @@ export async function createIssueDirectAction(
   const validatedFields = createIssueDirectSchema.safeParse(rawData);
 
   if (!validatedFields.success) {
-      const formattedErrors = validatedFields.error.errors.map(e => {
-        const path = e.path.join('.');
-        return path ? `${path}: ${e.message}` : e.message;
-      }).join('; ');
+      let detailedMessage = 'Unknown validation error.';
+      try {
+          const flatErrors = validatedFields.error.flatten();
+          const messages: string[] = [];
+          // Field errors
+          for (const field in flatErrors.fieldErrors) {
+              const fieldMessages = (flatErrors.fieldErrors as any)[field]; // Type assertion for direct access
+              if (fieldMessages && fieldMessages.length > 0) {
+                  messages.push(`${field.replace(/^description_/, 'Description ')}: ${fieldMessages.join(', ')}`);
+              }
+          }
+          // Form-level errors
+          if (flatErrors.formErrors.length > 0) {
+              messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
+          }
+          if (messages.length > 0) {
+              detailedMessage = messages.join('; ');
+          }
+      } catch (e) {
+          console.error("Error constructing Zod error message for create:", e);
+          detailedMessage = "Validation failed, and there was an issue formatting the error details.";
+      }
       return {
-        status: 'error',
-        message: `Validation failed: ${formattedErrors || 'Unknown validation error.'}`,
+          status: 'error',
+          message: `Validation failed: ${detailedMessage}`,
       };
   }
 
@@ -333,7 +367,7 @@ export async function createIssueDirectAction(
       method: actualApiMethod,
       payload: data.description_payload || undefined,
       response: data.description_response || undefined,
-      responseCode: data.description_responseCode === null || isNaN(Number(data.description_responseCode)) ? undefined : Number(data.description_responseCode),
+      responseCode: data.description_responseCode === null || data.description_responseCode === undefined || isNaN(Number(data.description_responseCode)) ? undefined : Number(data.description_responseCode),
       imageDataUri: data.description_imageDataUri || undefined,
       generalNotes: data.description_generalNotes || undefined,
     };
@@ -370,8 +404,6 @@ export async function createIssueDirectAction(
 }
 
 export async function getIssues(): Promise<Issue[]> {
-    // Simulate network delay
-    // await new Promise(resolve => setTimeout(resolve, 500));
     return Promise.resolve(issuesDB);
 }
 
