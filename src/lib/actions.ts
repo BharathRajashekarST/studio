@@ -74,6 +74,13 @@ export async function processIssueCommandAction(
         title: interpretation.title,
         description: { 
             generalNotes: interpretation.description || '',
+            // For AI commands, we are keeping API specific fields empty for now
+            apiName: undefined,
+            method: undefined,
+            payload: undefined,
+            response: undefined,
+            responseCode: undefined,
+            imageDataUri: undefined,
         },
         status: (issueStatuses.includes(interpretation.status as IssueStatus) ? interpretation.status : 'To Do') as IssueStatus,
         priority: (issuePriorities.includes(interpretation.priority as IssuePriority) ? interpretation.priority : 'Medium') as IssuePriority,
@@ -115,6 +122,10 @@ export async function processIssueCommandAction(
         issueToUpdate.priority = interpretation.priority as IssuePriority;
         issueToUpdate.updatedAt = new Date().toISOString();
       } else if (interpretation.action === 'updateIssueDescription' && typeof interpretation.description === 'string') {
+        // Ensure description object exists
+        if (!issueToUpdate.description) {
+            issueToUpdate.description = {};
+        }
         issueToUpdate.description.generalNotes = interpretation.description;
         issueToUpdate.updatedAt = new Date().toISOString();
       } else if (interpretation.action === 'updateIssueTitle' && interpretation.title) {
@@ -159,17 +170,17 @@ const updateIssueSchema = z.object({
   status: z.custom<IssueStatus>((val) => issueStatuses.includes(val as IssueStatus), "Invalid status value"),
   priority: z.custom<IssuePriority>((val) => issuePriorities.includes(val as IssuePriority), "Invalid priority value"),
   assignee: z.string().optional(),
-  description_apiName: z.string().optional(),
-  description_method: z.string().optional(), // Accepts API_METHOD_NA_FORM_VALUE or actual methods
-  description_payload: z.string().optional(),
-  description_response: z.string().optional(),
+  description_apiName: z.string().optional().default(''),
+  description_method: z.string().optional().default(''),
+  description_payload: z.string().optional().default(''),
+  description_response: z.string().optional().default(''),
   description_responseCode: z.preprocess(
     (val) => (val === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
-    z.number().int().optional()
-  ),
+    z.number().int().optional().nullable() // Allow null from parseInt if input is not a number initially
+  ).refine(val => val === undefined || val === null || !isNaN(val), { message: "Response code must be a valid number if provided."}),
   description_imageDataUri: z.string().optional(), 
   description_imageDataUri_clear: z.string().optional(), 
-  description_generalNotes: z.string().optional(),
+  description_generalNotes: z.string().optional().default(''),
 });
 
 
@@ -196,16 +207,14 @@ export async function updateIssueAction(
     const validatedFields = updateIssueSchema.safeParse(rawData);
 
     if (!validatedFields.success) {
-      let errorMessages = "Invalid data: ";
-      const fieldErrors = validatedFields.error.flatten().fieldErrors;
-      for (const key in fieldErrors) {
-          if (fieldErrors[key as keyof typeof fieldErrors]) {
-            errorMessages += `${key}: ${fieldErrors[key as keyof typeof fieldErrors]!.join(', ')}; `;
-          }
-      }
+      const formattedErrors = validatedFields.error.errors.map(e => {
+        const path = e.path.join('.');
+        // For root level errors, path might be empty. For field errors, it'll be like 'fieldName'.
+        return path ? `${path}: ${e.message}` : e.message; 
+      }).join('; ');
       return {
         status: 'error',
-        message: errorMessages,
+        message: `Validation failed: ${formattedErrors || 'Unknown validation error.'}`,
       };
     }
 
@@ -220,23 +229,20 @@ export async function updateIssueAction(
       const existingIssue = issuesDB[issueIndex];
       
       let actualApiMethod: ApiMethod | undefined = undefined;
-      if (data.description_method && data.description_method !== API_METHOD_NA_FORM_VALUE) {
+      if (data.description_method && data.description_method !== API_METHOD_NA_FORM_VALUE && apiMethods.includes(data.description_method as ApiMethod)) {
         actualApiMethod = data.description_method as ApiMethod;
-      } else if (data.description_method === '') { // Handle if empty string is somehow passed despite NA value
-         actualApiMethod = undefined; // Or treat '' as a valid ApiMethod if desired
       }
 
-
       const newDescription: IssueDescription = {
-        apiName: data.description_apiName,
+        apiName: data.description_apiName || undefined, // Ensure empty strings become undefined if desired
         method: actualApiMethod,
-        payload: data.description_payload,
-        response: data.description_response,
-        responseCode: data.description_responseCode,
+        payload: data.description_payload || undefined,
+        response: data.description_response || undefined,
+        responseCode: data.description_responseCode === null || isNaN(Number(data.description_responseCode)) ? undefined : Number(data.description_responseCode),
         imageDataUri: data.description_imageDataUri_clear === "true" 
                         ? undefined 
                         : (data.description_imageDataUri || existingIssue.description.imageDataUri),
-        generalNotes: data.description_generalNotes,
+        generalNotes: data.description_generalNotes || undefined,
       };
 
       const updatedIssue: Issue = {
@@ -269,16 +275,16 @@ const createIssueDirectSchema = z.object({
   status: z.custom<IssueStatus>((val) => issueStatuses.includes(val as IssueStatus), "Invalid status value"),
   priority: z.custom<IssuePriority>((val) => issuePriorities.includes(val as IssuePriority), "Invalid priority value"),
   assignee: z.string().optional(),
-  description_apiName: z.string().optional(),
-  description_method: z.string().optional(), // Accepts API_METHOD_NA_FORM_VALUE or actual methods
-  description_payload: z.string().optional(),
-  description_response: z.string().optional(),
+  description_apiName: z.string().optional().default(''),
+  description_method: z.string().optional().default(''), 
+  description_payload: z.string().optional().default(''),
+  description_response: z.string().optional().default(''),
   description_responseCode: z.preprocess(
     (val) => (val === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
-    z.number().int().optional()
-  ),
+    z.number().int().optional().nullable()
+  ).refine(val => val === undefined || val === null || !isNaN(val), { message: "Response code must be a valid number if provided."}),
   description_imageDataUri: z.string().optional(),
-  description_generalNotes: z.string().optional(),
+  description_generalNotes: z.string().optional().default(''),
 });
 
 export async function createIssueDirectAction(
@@ -302,17 +308,14 @@ export async function createIssueDirectAction(
   const validatedFields = createIssueDirectSchema.safeParse(rawData);
 
   if (!validatedFields.success) {
-    let errorMessages = "Validation failed: ";
-    const fieldErrors = validatedFields.error.flatten().fieldErrors;
-    for (const key in fieldErrors) {
-        if (fieldErrors[key as keyof typeof fieldErrors]) {
-          errorMessages += `${key}: ${fieldErrors[key as keyof typeof fieldErrors]!.join(', ')}; `;
-        }
-    }
-    return {
-      status: 'error',
-      message: errorMessages.trim().slice(0, -1),
-    };
+      const formattedErrors = validatedFields.error.errors.map(e => {
+        const path = e.path.join('.');
+        return path ? `${path}: ${e.message}` : e.message;
+      }).join('; ');
+      return {
+        status: 'error',
+        message: `Validation failed: ${formattedErrors || 'Unknown validation error.'}`,
+      };
   }
 
   const data = validatedFields.data;
@@ -321,19 +324,18 @@ export async function createIssueDirectAction(
     const newIssueId = generateNewIssueId(issuesDB);
     
     let actualApiMethod: ApiMethod | undefined = undefined;
-    if (data.description_method && data.description_method !== API_METHOD_NA_FORM_VALUE) {
+    if (data.description_method && data.description_method !== API_METHOD_NA_FORM_VALUE && apiMethods.includes(data.description_method as ApiMethod)) {
       actualApiMethod = data.description_method as ApiMethod;
     }
-    // If description_method is API_METHOD_NA_FORM_VALUE or empty, actualApiMethod remains undefined.
 
     const newDescription: IssueDescription = {
-      apiName: data.description_apiName,
+      apiName: data.description_apiName || undefined,
       method: actualApiMethod,
-      payload: data.description_payload,
-      response: data.description_response,
-      responseCode: data.description_responseCode,
-      imageDataUri: data.description_imageDataUri,
-      generalNotes: data.description_generalNotes,
+      payload: data.description_payload || undefined,
+      response: data.description_response || undefined,
+      responseCode: data.description_responseCode === null || isNaN(Number(data.description_responseCode)) ? undefined : Number(data.description_responseCode),
+      imageDataUri: data.description_imageDataUri || undefined,
+      generalNotes: data.description_generalNotes || undefined,
     };
 
     const newIssue: Issue = {
@@ -368,6 +370,8 @@ export async function createIssueDirectAction(
 }
 
 export async function getIssues(): Promise<Issue[]> {
+    // Simulate network delay
+    // await new Promise(resolve => setTimeout(resolve, 500));
     return Promise.resolve(issuesDB);
 }
 
@@ -437,7 +441,7 @@ export async function addAssigneeAction(
   }
   const { assigneeName } = validatedFields.data;
 
-  if (assigneesDB.includes(assigneeName)) {
+  if (assigneesDB.map(a => a.toLowerCase()).includes(assigneeName.toLowerCase())) {
     return { status: 'error', message: `Assignee "${assigneeName}" already exists.` };
   }
   assigneesDB.push(assigneeName);
@@ -468,7 +472,7 @@ export async function deleteAssigneeAction(
     };
   }
   const { assigneeName } = validatedFields.data;
-  const index = assigneesDB.indexOf(assigneeName);
+  const index = assigneesDB.map(a => a.toLowerCase()).indexOf(assigneeName.toLowerCase());
   if (index === -1) {
     return { status: 'error', message: `Assignee "${assigneeName}" not found.` };
   }

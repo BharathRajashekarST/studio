@@ -19,8 +19,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+} from '@/components/ui/dialog'; // Removed DialogTrigger as it's implicitly handled
 
 interface CreateIssueFormProps {
   onIssueCreated?: (newIssueId?: string) => void;
@@ -48,17 +47,17 @@ export function CreateIssueForm({ onIssueCreated, assignees }: CreateIssueFormPr
   const [state, formAction] = React.useActionState(createIssueDirectAction, initialState);
   const { toast } = useToast();
   const formRef = React.useRef<HTMLFormElement>(null);
-  const fileInputRef = React.useRef<HTMLInputElement>(null); // For the image input inside the dialog
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [isApiDetailsDialogOpen, setIsApiDetailsDialogOpen] = React.useState(false);
   const [currentApiDetails, setCurrentApiDetails] = React.useState<IssueDescription>({
     apiName: '',
-    method: API_METHOD_NA_VALUE as ApiMethod, // Cast because "" is a valid ApiMethod
+    method: API_METHOD_NA_VALUE as ApiMethod,
     payload: '',
     response: '',
     responseCode: undefined,
     imageDataUri: undefined,
-    generalNotes: '', // Will be handled by its own Textarea directly in the form
+    generalNotes: '',
   });
   
   React.useEffect(() => {
@@ -67,7 +66,7 @@ export function CreateIssueForm({ onIssueCreated, assignees }: CreateIssueFormPr
         title: "Issue Created",
         description: state.message,
       });
-      handleReset(); // Reset the form and dialog state
+      handleReset();
       if (onIssueCreated && state.newIssueId) {
         onIssueCreated(state.newIssueId);
       }
@@ -75,7 +74,7 @@ export function CreateIssueForm({ onIssueCreated, assignees }: CreateIssueFormPr
       toast({
         title: "Error Creating Issue",
         description: state.message,
-        variant: 'destructive',
+        variant: 'destructive', // Ensure destructive variant for errors
       });
     }
   }, [state, toast, onIssueCreated]);
@@ -94,17 +93,17 @@ export function CreateIssueForm({ onIssueCreated, assignees }: CreateIssueFormPr
   };
   
   const handleReset = () => {
-    formRef.current?.reset(); // Resets native form elements including generalNotes Textarea
-    setCurrentApiDetails({ // Reset API details state
+    formRef.current?.reset(); 
+    setCurrentApiDetails({ 
       apiName: '',
       method: API_METHOD_NA_VALUE as ApiMethod,
       payload: '',
       response: '',
       responseCode: undefined,
       imageDataUri: undefined,
-      generalNotes: '', 
+      generalNotes: '', // This is actually part of the main form, but good to reset form elements
     });
-    if (fileInputRef.current) { // Clear file input in dialog
+    if (fileInputRef.current) { 
         fileInputRef.current.value = "";
     }
     setIsApiDetailsDialogOpen(false);
@@ -112,13 +111,12 @@ export function CreateIssueForm({ onIssueCreated, assignees }: CreateIssueFormPr
 
 
   return (
-    <div className="p-6 border rounded-lg shadow-lg bg-card"> {/* Removed h-full */}
+    <div className="p-6 border rounded-lg shadow-lg bg-card">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-xl font-semibold text-card-foreground">Create New Issue</h3>
         <Button variant="outline" size="sm" onClick={handleReset}>Reset Form</Button>
       </div>
       <form action={formAction} ref={formRef} className="space-y-6">
-        {/* Hidden inputs for API details, values come from currentApiDetails state */}
         <input type="hidden" name="description_apiName" value={currentApiDetails.apiName || ''} />
         <input type="hidden" name="description_method" value={currentApiDetails.method === API_METHOD_NA_VALUE ? '' : currentApiDetails.method || ''} />
         <input type="hidden" name="description_payload" value={currentApiDetails.payload || ''} />
@@ -126,9 +124,7 @@ export function CreateIssueForm({ onIssueCreated, assignees }: CreateIssueFormPr
         <input type="hidden" name="description_responseCode" value={currentApiDetails.responseCode?.toString() || ''} />
         <input type="hidden" name="description_imageDataUri" value={currentApiDetails.imageDataUri || ''} />
         
-        {/* Main form content area - no outer ScrollArea here, let content define height */}
         <div className="space-y-4">
-          {/* Core Fields */}
           <div className="space-y-2">
             <Label htmlFor="form-title" className="text-card-foreground">Title*</Label>
             <Input id="form-title" name="title" placeholder="Enter issue title" required className="bg-background text-foreground"/>
@@ -176,15 +172,14 @@ export function CreateIssueForm({ onIssueCreated, assignees }: CreateIssueFormPr
         </div>
       </form>
 
-      {/* API Details Dialog */}
       <Dialog open={isApiDetailsDialogOpen} onOpenChange={setIsApiDetailsDialogOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>API Details</DialogTitle>
             <DialogDescription>Add or edit the API specific details for this issue.</DialogDescription>
           </DialogHeader>
-          <ScrollArea className="max-h-[60vh] p-1 pr-3 -mr-3"> {/* Added negative margin to compensate for padding */}
-            <div className="space-y-4 py-4 pr-1"> {/* Added pr-1 to prevent scrollbar overlap */}
+          <ScrollArea className="max-h-[60vh] p-1 pr-3 -mr-3">
+            <div className="space-y-4 py-4 pr-1">
               <div className="space-y-2">
                 <Label htmlFor="dialog-desc-apiName">API Name/Endpoint</Label>
                 <Input id="dialog-desc-apiName" value={currentApiDetails.apiName || ''} onChange={(e) => setCurrentApiDetails(prev => ({...prev, apiName: e.target.value}))} placeholder="/users/{id}" className="bg-background text-foreground"/>
@@ -235,4 +230,3 @@ export function CreateIssueForm({ onIssueCreated, assignees }: CreateIssueFormPr
     </div>
   );
 }
-
