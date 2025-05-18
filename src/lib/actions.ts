@@ -40,23 +40,24 @@ export async function processIssueCommandAction(
   prevState: CommandActionState,
   formData: FormData
 ): Promise<CommandActionState> {
-  const rawCommand = formData.get('command');
-  const issueIdContextFromForm = formData.get('issueIdContext') as string | null;
-
-  const validatedFields = commandSchema.safeParse({
-    command: rawCommand,
-  });
-
-  if (!validatedFields.success) {
-    return {
-      status: 'error',
-      message: validatedFields.error.flatten().fieldErrors.command?.[0] || 'Invalid input.',
-    };
-  }
-  
-  const { command } = validatedFields.data;
-
   try {
+    const rawCommand = formData.get('command');
+    const issueIdContextFromForm = formData.get('issueIdContext') as string | null;
+
+    const validatedFields = commandSchema.safeParse({
+      command: rawCommand,
+    });
+
+    if (!validatedFields.success) {
+      return {
+        status: 'error',
+        message: validatedFields.error.flatten().fieldErrors.command?.[0] || 'Invalid input.',
+      };
+    }
+    
+    const { command } = validatedFields.data;
+
+  
     const interpretation = await interpretIssueCommand({ 
       command, 
       issueId: issueIdContextFromForm || "NO_CONTEXT_ID" 
@@ -173,9 +174,14 @@ const updateIssueSchema = z.object({
   description_payload: z.string().optional().default(''),
   description_response: z.string().optional().default(''),
   description_responseCode: z.preprocess(
-    (val) => (String(val).trim() === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
-    z.number().int().optional().nullable()
-  ).refine(val => val === undefined || val === null || !isNaN(val), { message: "Response code must be a valid integer if provided."}),
+    (val) => {
+        const strVal = String(val).trim();
+        if (strVal === "" || val === null || val === undefined) return undefined;
+        const num = parseInt(strVal, 10);
+        return isNaN(num) ? undefined : num; // Ensure NaN becomes undefined for Zod
+    },
+    z.number().int().optional()
+  ),
   description_imageDataUri: z.string().optional(), 
   description_imageDataUri_clear: z.string().optional(), 
   description_generalNotes: z.string().optional().default(''),
@@ -186,62 +192,62 @@ export async function updateIssueAction(
     prevState: UpdateIssueActionState,
     formData: FormData
   ): Promise<UpdateIssueActionState> {
-    const rawData = {
-      id: formData.get('id'),
-      title: formData.get('title'),
-      status: formData.get('status'),
-      priority: formData.get('priority'),
-      assignee: formData.get('assignee'),
-      description_apiName: formData.get('description_apiName'),
-      description_method: formData.get('description_method'),
-      description_payload: formData.get('description_payload'),
-      description_response: formData.get('description_response'),
-      description_responseCode: formData.get('description_responseCode'),
-      description_imageDataUri: formData.get('description_imageDataUri'),
-      description_imageDataUri_clear: formData.get('description_imageDataUri_clear'),
-      description_generalNotes: formData.get('description_generalNotes'),
-    };
-
-    const validatedFields = updateIssueSchema.safeParse(rawData);
-
-    if (!validatedFields.success) {
-      let detailedMessage = 'Unknown validation error.';
-      try {
-          const flatErrors = validatedFields.error.flatten();
-          const messages: string[] = [];
-          
-          if (flatErrors.formErrors.length > 0) {
-              messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
-          }
-
-          for (const [field, fieldMessages] of Object.entries(flatErrors.fieldErrors)) {
-              if (fieldMessages && fieldMessages.length > 0) {
-                  messages.push(`${field.replace(/^description_/, 'Description ')}: ${fieldMessages.join(', ')}`);
-              }
-          }
-          
-          if (messages.length > 0) {
-              detailedMessage = messages.join('; ');
-          } else if (validatedFields.error.issues.length > 0) {
-            detailedMessage = validatedFields.error.issues.map(issue => `${issue.path.join('.') || 'Form'}: ${issue.message}`).join('; ') || "Validation failed with unknown Zod issues.";
-          } else {
-            detailedMessage = "Validation failed without specific error messages.";
-          }
-      } catch (e) {
-          console.error("Error constructing Zod error message for update:", e);
-          detailedMessage = "Validation failed, and there was an issue formatting the error details. Check server logs for Zod error.";
-          if (e instanceof Error) console.error("Formatting error stack:", e.stack);
-          console.error("Original Zod error object:", JSON.stringify(validatedFields.error.format(), null, 2));
-      }
-      return {
-          status: 'error',
-          message: `Validation failed: ${detailedMessage}`,
-      };
-    }
-
-    const data = validatedFields.data;
-  
     try {
+      const rawData = {
+        id: formData.get('id'),
+        title: formData.get('title'),
+        status: formData.get('status'),
+        priority: formData.get('priority'),
+        assignee: formData.get('assignee'),
+        description_apiName: formData.get('description_apiName'),
+        description_method: formData.get('description_method'),
+        description_payload: formData.get('description_payload'),
+        description_response: formData.get('description_response'),
+        description_responseCode: formData.get('description_responseCode'),
+        description_imageDataUri: formData.get('description_imageDataUri'),
+        description_imageDataUri_clear: formData.get('description_imageDataUri_clear'),
+        description_generalNotes: formData.get('description_generalNotes'),
+      };
+
+      const validatedFields = updateIssueSchema.safeParse(rawData);
+
+      if (!validatedFields.success) {
+        let detailedMessage = 'Unknown validation error.';
+        try {
+            const flatErrors = validatedFields.error.flatten();
+            const messages: string[] = [];
+            
+            if (flatErrors.formErrors.length > 0) {
+                messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
+            }
+
+            for (const [field, fieldMessages] of Object.entries(flatErrors.fieldErrors)) {
+                if (fieldMessages && fieldMessages.length > 0) {
+                    messages.push(`${field.replace(/^description_/, 'Description ')}: ${fieldMessages.join(', ')}`);
+                }
+            }
+            
+            if (messages.length > 0) {
+                detailedMessage = messages.join('; ');
+            } else if (validatedFields.error.issues.length > 0) {
+              detailedMessage = validatedFields.error.issues.map(issue => `${issue.path.join('.') || 'Form'}: ${issue.message}`).join('; ') || "Validation failed with unknown Zod issues.";
+            } else {
+              detailedMessage = "Validation failed without specific error messages.";
+            }
+        } catch (e) {
+            console.error("Error constructing Zod error message for update:", e);
+            detailedMessage = "Validation failed, and there was an issue formatting the error details. Check server logs for Zod error.";
+            if (e instanceof Error) console.error("Formatting error stack:", e.stack);
+            console.error("Original Zod error object:", JSON.stringify(validatedFields.error.format(), null, 2));
+        }
+        return {
+            status: 'error',
+            message: `Validation failed: ${detailedMessage}`,
+        };
+      }
+
+      const data = validatedFields.data;
+    
       const issueIndex = issuesDB.findIndex(issue => issue.id === data.id);
       if (issueIndex === -1) {
         return { status: 'error', message: 'Issue not found.' };
@@ -280,8 +286,8 @@ export async function updateIssueAction(
       revalidatePath('/'); 
       return { status: 'success', message: 'Issue updated successfully.', issue: updatedIssue };
     } catch (error) {
-      console.error('Error updating issue:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update issue.';
+      console.error('Unhandled error in updateIssueAction:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred while updating the issue.';
       return { status: 'error', message: errorMessage };
     }
   }
@@ -302,9 +308,14 @@ const createIssueDirectSchema = z.object({
   description_payload: z.string().optional().default(''),
   description_response: z.string().optional().default(''),
   description_responseCode: z.preprocess(
-    (val) => (String(val).trim() === "" || val === null || val === undefined ? undefined : parseInt(String(val), 10)),
-    z.number().int().optional().nullable()
-  ).refine(val => val === undefined || val === null || !isNaN(val), { message: "Response code must be a valid integer if provided."}),
+    (val) => {
+        const strVal = String(val).trim();
+        if (strVal === "" || val === null || val === undefined) return undefined;
+        const num = parseInt(strVal, 10);
+        return isNaN(num) ? undefined : num; // Ensure NaN becomes undefined for Zod
+    },
+    z.number().int().optional()
+  ),
   description_imageDataUri: z.string().optional(),
   description_generalNotes: z.string().optional().default(''),
 });
@@ -313,60 +324,60 @@ export async function createIssueDirectAction(
   prevState: CreateIssueDirectActionState,
   formData: FormData
 ): Promise<CreateIssueDirectActionState> {
-  const rawData = {
-    title: formData.get('title'),
-    status: formData.get('status'),
-    priority: formData.get('priority'),
-    assignee: formData.get('assignee'),
-    description_apiName: formData.get('description_apiName'),
-    description_method: formData.get('description_method'),
-    description_payload: formData.get('description_payload'),
-    description_response: formData.get('description_response'),
-    description_responseCode: formData.get('description_responseCode'),
-    description_imageDataUri: formData.get('description_imageDataUri'),
-    description_generalNotes: formData.get('description_generalNotes'),
-  };
-
-  const validatedFields = createIssueDirectSchema.safeParse(rawData);
-
-  if (!validatedFields.success) {
-      let detailedMessage = 'Unknown validation error.';
-      try {
-          const flatErrors = validatedFields.error.flatten();
-          const messages: string[] = [];
-          
-          if (flatErrors.formErrors.length > 0) {
-              messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
-          }
-          
-          for (const [field, fieldMessages] of Object.entries(flatErrors.fieldErrors)) {
-              if (fieldMessages && fieldMessages.length > 0) {
-                  messages.push(`${field.replace(/^description_/, 'Description ')}: ${fieldMessages.join(', ')}`);
-              }
-          }
-          
-          if (messages.length > 0) {
-              detailedMessage = messages.join('; ');
-          } else if (validatedFields.error.issues.length > 0) {
-            detailedMessage = validatedFields.error.issues.map(issue => `${issue.path.join('.') || 'Form'}: ${issue.message}`).join('; ') || "Validation failed with unknown Zod issues.";
-          } else {
-            detailedMessage = "Validation failed without specific error messages.";
-          }
-      } catch (e) {
-          console.error("Error constructing Zod error message for create:", e);
-          detailedMessage = "Validation failed, and there was an issue formatting the error details. Check server logs for Zod error.";
-          if (e instanceof Error) console.error("Formatting error stack:", e.stack);
-          console.error("Original Zod error object:", JSON.stringify(validatedFields.error.format(), null, 2));
-      }
-      return {
-          status: 'error',
-          message: `Validation failed: ${detailedMessage}`,
-      };
-  }
-
-  const data = validatedFields.data;
-
   try {
+    const rawData = {
+      title: formData.get('title'),
+      status: formData.get('status'),
+      priority: formData.get('priority'),
+      assignee: formData.get('assignee'),
+      description_apiName: formData.get('description_apiName'),
+      description_method: formData.get('description_method'),
+      description_payload: formData.get('description_payload'),
+      description_response: formData.get('description_response'),
+      description_responseCode: formData.get('description_responseCode'),
+      description_imageDataUri: formData.get('description_imageDataUri'),
+      description_generalNotes: formData.get('description_generalNotes'),
+    };
+
+    const validatedFields = createIssueDirectSchema.safeParse(rawData);
+
+    if (!validatedFields.success) {
+        let detailedMessage = 'Unknown validation error.';
+        try {
+            const flatErrors = validatedFields.error.flatten();
+            const messages: string[] = [];
+            
+            if (flatErrors.formErrors.length > 0) {
+                messages.push(`Form: ${flatErrors.formErrors.join(', ')}`);
+            }
+            
+            for (const [field, fieldMessages] of Object.entries(flatErrors.fieldErrors)) {
+                if (fieldMessages && fieldMessages.length > 0) {
+                    messages.push(`${field.replace(/^description_/, 'Description ')}: ${fieldMessages.join(', ')}`);
+                }
+            }
+            
+            if (messages.length > 0) {
+                detailedMessage = messages.join('; ');
+            } else if (validatedFields.error.issues.length > 0) {
+              detailedMessage = validatedFields.error.issues.map(issue => `${issue.path.join('.') || 'Form'}: ${issue.message}`).join('; ') || "Validation failed with unknown Zod issues.";
+            } else {
+              detailedMessage = "Validation failed without specific error messages.";
+            }
+        } catch (e) {
+            console.error("Error constructing Zod error message for create:", e);
+            detailedMessage = "Validation failed, and there was an issue formatting the error details. Check server logs for Zod error.";
+            if (e instanceof Error) console.error("Formatting error stack:", e.stack);
+            console.error("Original Zod error object:", JSON.stringify(validatedFields.error.format(), null, 2));
+        }
+        return {
+            status: 'error',
+            message: `Validation failed: ${detailedMessage}`,
+        };
+    }
+
+    const data = validatedFields.data;
+
     const newIssueId = generateNewIssueId(issuesDB);
     
     let actualApiMethod: ApiMethod | undefined = undefined;
@@ -379,7 +390,7 @@ export async function createIssueDirectAction(
       method: actualApiMethod,
       payload: data.description_payload || undefined,
       response: data.description_response || undefined,
-      responseCode: data.description_responseCode, // Already number or undefined from Zod
+      responseCode: data.description_responseCode, 
       imageDataUri: data.description_imageDataUri || undefined,
       generalNotes: data.description_generalNotes || undefined,
     };
@@ -406,8 +417,8 @@ export async function createIssueDirectAction(
       newIssueId: newIssueId,
     };
   } catch (error) {
-    console.error('Error creating issue directly:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to create issue directly.';
+    console.error('Unhandled error in createIssueDirectAction:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred while creating the issue.';
     return {
       status: 'error',
       message: errorMessage,
@@ -434,18 +445,19 @@ export async function deleteIssueAction(
   prevState: DeleteIssueActionState,
   formData: FormData
 ): Promise<DeleteIssueActionState> {
-  const validatedFields = deleteIssueSchema.safeParse({
-    issueId: formData.get('issueId'),
-  });
-
-  if (!validatedFields.success) {
-    return {
-      status: 'error',
-      message: validatedFields.error.flatten().fieldErrors.issueId?.[0] || 'Invalid input for deletion.',
-    };
-  }
-  const { issueId } = validatedFields.data;
   try {
+    const validatedFields = deleteIssueSchema.safeParse({
+      issueId: formData.get('issueId'),
+    });
+
+    if (!validatedFields.success) {
+      return {
+        status: 'error',
+        message: validatedFields.error.flatten().fieldErrors.issueId?.[0] || 'Invalid input for deletion.',
+      };
+    }
+    const { issueId } = validatedFields.data;
+    
     const issueIndex = issuesDB.findIndex(issue => issue.id === issueId);
     if (issueIndex === -1) {
       return { status: 'error', message: `Issue ${issueId} not found.` };
@@ -454,8 +466,9 @@ export async function deleteIssueAction(
     revalidatePath('/'); 
     return { status: 'success', message: `Issue ${issueId} deleted successfully.` };
   } catch (error) {
-    console.error('Error deleting issue:', error);
-    return { status: 'error', message: 'Failed to delete issue. Please try again.' };
+    console.error('Unhandled error in deleteIssueAction:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred while deleting the issue.';
+    return { status: 'error', message: errorMessage };
   }
 }
 
@@ -477,24 +490,30 @@ export async function addAssigneeAction(
   prevState: AddAssigneeActionState,
   formData: FormData
 ): Promise<AddAssigneeActionState> {
-  const validatedFields = addAssigneeSchema.safeParse({
-    assigneeName: formData.get('assigneeName'),
-  });
+  try {
+    const validatedFields = addAssigneeSchema.safeParse({
+      assigneeName: formData.get('assigneeName'),
+    });
 
-  if (!validatedFields.success) {
-    return {
-      status: 'error',
-      message: validatedFields.error.flatten().fieldErrors.assigneeName?.[0] || 'Invalid assignee name.',
-    };
-  }
-  const { assigneeName } = validatedFields.data;
+    if (!validatedFields.success) {
+      return {
+        status: 'error',
+        message: validatedFields.error.flatten().fieldErrors.assigneeName?.[0] || 'Invalid assignee name.',
+      };
+    }
+    const { assigneeName } = validatedFields.data;
 
-  if (assigneesDB.map(a => a.toLowerCase()).includes(assigneeName.toLowerCase())) {
-    return { status: 'error', message: `Assignee "${assigneeName}" already exists.` };
+    if (assigneesDB.map(a => a.toLowerCase()).includes(assigneeName.toLowerCase())) {
+      return { status: 'error', message: `Assignee "${assigneeName}" already exists.` };
+    }
+    assigneesDB.push(assigneeName);
+    revalidatePath('/');
+    return { status: 'success', message: `Assignee "${assigneeName}" added.` };
+  } catch (error) {
+    console.error('Unhandled error in addAssigneeAction:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred while adding assignee.';
+    return { status: 'error', message: errorMessage };
   }
-  assigneesDB.push(assigneeName);
-  revalidatePath('/');
-  return { status: 'success', message: `Assignee "${assigneeName}" added.` };
 }
 
 export interface DeleteAssigneeActionState {
@@ -509,24 +528,28 @@ export async function deleteAssigneeAction(
   prevState: DeleteAssigneeActionState,
   formData: FormData
 ): Promise<DeleteAssigneeActionState> {
-  const validatedFields = deleteAssigneeSchema.safeParse({
-    assigneeName: formData.get('assigneeName'),
-  });
+  try {
+    const validatedFields = deleteAssigneeSchema.safeParse({
+      assigneeName: formData.get('assigneeName'),
+    });
 
-  if (!validatedFields.success) {
-    return {
-      status: 'error',
-      message: validatedFields.error.flatten().fieldErrors.assigneeName?.[0] || 'Invalid assignee name for deletion.',
-    };
+    if (!validatedFields.success) {
+      return {
+        status: 'error',
+        message: validatedFields.error.flatten().fieldErrors.assigneeName?.[0] || 'Invalid assignee name for deletion.',
+      };
+    }
+    const { assigneeName } = validatedFields.data;
+    const index = assigneesDB.map(a => a.toLowerCase()).indexOf(assigneeName.toLowerCase());
+    if (index === -1) {
+      return { status: 'error', message: `Assignee "${assigneeName}" not found.` };
+    }
+    assigneesDB.splice(index, 1);
+    revalidatePath('/');
+    return { status: 'success', message: `Assignee "${assigneeName}" deleted.` };
+  } catch (error) {
+    console.error('Unhandled error in deleteAssigneeAction:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred while deleting assignee.';
+    return { status: 'error', message: errorMessage };
   }
-  const { assigneeName } = validatedFields.data;
-  const index = assigneesDB.map(a => a.toLowerCase()).indexOf(assigneeName.toLowerCase());
-  if (index === -1) {
-    return { status: 'error', message: `Assignee "${assigneeName}" not found.` };
-  }
-  assigneesDB.splice(index, 1);
-  revalidatePath('/');
-  return { status: 'success', message: `Assignee "${assigneeName}" deleted.` };
 }
-
-    
