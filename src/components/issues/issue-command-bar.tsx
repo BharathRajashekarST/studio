@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
+import { useFormStatus } from 'react-dom';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -14,6 +15,23 @@ const initialState: CommandActionState = {
   status: 'idle',
   message: '',
 };
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" variant="default" size="lg" aria-label="Submit Command" disabled={pending}>
+      {pending ? (
+        <>
+          <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...
+        </>
+      ) : (
+        <>
+          <Send className="mr-2 h-5 w-5" /> Submit
+        </>
+      )}
+    </Button>
+  );
+}
 
 export function IssueCommandBar({ onCommandProcessed }: { onCommandProcessed?: (updatedIssueId?: string) => void }) {
   const [state, formAction] = React.useActionState(processIssueCommandAction, initialState);
@@ -51,7 +69,7 @@ export function IssueCommandBar({ onCommandProcessed }: { onCommandProcessed?: (
           AI Command Bar
         </CardTitle>
         <CardDescription>
-          Type commands like &quot;Create new issue: Fix login button, priority High&quot;, &quot;Update status of SF-001 to Done&quot;, &quot;Assign SF-002 to Bob The Builder&quot;, or &quot;Create new issue: 'Develop feature X', assign to Diana Prince, priority Medium&quot;.
+          Type commands like &quot;Create new issue: 'Fix login button', priority High&quot;, &quot;Update status of SF-001 to Done&quot;, &quot;Assign SF-002 to Bob The Builder&quot;, or &quot;Create new issue: 'Develop feature X', assign to Diana Prince, priority Medium&quot;.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -64,9 +82,7 @@ export function IssueCommandBar({ onCommandProcessed }: { onCommandProcessed?: (
               required
               aria-label="AI Command Input"
             />
-            <Button type="submit" variant="default" size="lg" aria-label="Submit Command">
-              <SubmitButtonContent />
-            </Button>
+            <SubmitButton />
           </div>
           {state.interpretation && state.status === 'success' && (
              <Alert variant="default" className="mt-4 bg-secondary/50">
@@ -83,8 +99,4 @@ export function IssueCommandBar({ onCommandProcessed }: { onCommandProcessed?: (
       </CardContent>
     </Card>
   );
-}
-
-function SubmitButtonContent() {
-  return <Send className="h-5 w-5" />;
 }

@@ -24,17 +24,15 @@ import {
 } from '@/components/ui/select';
 import type { Issue, IssuePriority, IssueStatus } from '@/lib/types';
 import { issueStatuses, issuePriorities } from '@/lib/types';
-// import { assignees as mockAssignees } from '@/lib/mock-data'; // Removed direct import
 import { updateIssueAction, type UpdateIssueActionState } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-// import { Loader2 } from 'lucide-react'; // Not used in SubmitButtonContent
 
 interface IssueEditDialogProps {
   issue: Issue | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onIssueUpdated: () => void;
-  assignees: string[]; // Added assignees prop
+  assignees: string[]; 
 }
 
 const initialState: UpdateIssueActionState = {
