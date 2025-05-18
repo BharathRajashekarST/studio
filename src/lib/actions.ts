@@ -1,8 +1,10 @@
+
 'use server';
 
 import { z } from 'zod';
 import { interpretIssueCommand, type InterpretIssueCommandOutput } from '@/ai/flows/interpret-issue-command';
 import type { Issue, IssuePriority, IssueStatus } from '@/lib/types';
+import { issuePriorities, issueStatuses } from '@/lib/types'; // Import for validation
 import { revalidatePath } from 'next/cache';
 
 // Simulate a database or Google Sheets API
@@ -14,21 +16,37 @@ export interface CommandActionState {
   status: 'idle' | 'success' | 'error';
   message: string;
   interpretation?: InterpretIssueCommandOutput;
-  updatedIssueId?: string;
+  updatedIssueId?: string; // Could be new or existing ID
 }
 
 const commandSchema = z.object({
   command: z.string().min(1, 'Command cannot be empty.'),
-  issueIdContext: z.string().optional(),
+  // issueIdContext is optional from the form; if not provided, it's 'undefined'
+  // We'll pass a specific string like "NO_CONTEXT_ID" to the AI if it's not set.
 });
+
+// Helper function to generate a new issue ID
+function generateNewIssueId(existingIssues: Issue[]): string {
+  const numericIds = existingIssues
+    .map(issue => {
+      const match = issue.id.match(/^SF-(\d+)$/);
+      return match ? parseInt(match[1], 10) : NaN;
+    })
+    .filter(id => !isNaN(id));
+  const maxId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
+  return `SF-${(maxId + 1).toString().padStart(3, '0')}`;
+}
 
 export async function processIssueCommandAction(
   prevState: CommandActionState,
   formData: FormData
 ): Promise<CommandActionState> {
+  const rawCommand = formData.get('command');
+  // issueIdContext is not explicitly sent by the command bar form, so it will be null.
+  const issueIdContextFromForm = formData.get('issueIdContext') as string | null;
+
   const validatedFields = commandSchema.safeParse({
-    command: formData.get('command'),
-    issueIdContext: formData.get('issueIdContext'),
+    command: rawCommand,
   });
 
   if (!validatedFields.success) {
@@ -38,44 +56,132 @@ export async function processIssueCommandAction(
     };
   }
   
-  const { command, issueIdContext } = validatedFields.data;
+  const { command } = validatedFields.data;
 
   try {
+    // Pass "NO_CONTEXT_ID" if no specific context ID is available from the form/UI.
+    // The AI prompt is guided to parse IDs from the command string itself for updates.
     const interpretation = await interpretIssueCommand({ 
       command, 
-      issueId: issueIdContext || "context_not_set" 
+      issueId: issueIdContextFromForm || "NO_CONTEXT_ID" 
     });
     
-    // Example: if AI suggests updating status for a specific issue ID parsed.
-    // This is a simplified example. A real app would have more robust logic.
-    if (interpretation.action === 'updateStatus' && interpretation.status && interpretation.field === 'status') {
-        const targetIssueId = interpretation.value?.startsWith('SF-') ? interpretation.value : null; // simplistic id check
-        const issueToUpdate = targetIssueId ? issuesDB.find(issue => issue.id === targetIssueId) : null;
+    let updatedIssueId: string | undefined = undefined;
 
-        if (issueToUpdate) {
-            issueToUpdate.status = interpretation.status as IssueStatus;
-            issueToUpdate.updatedAt = new Date().toISOString();
-            revalidatePath('/');
-             return {
-                status: 'success',
-                message: `Command interpreted and applied: Status of ${issueToUpdate.id} updated to ${interpretation.status}.`,
-                interpretation,
-                updatedIssueId: issueToUpdate.id,
-            };
+    if (interpretation.action === 'createIssue') {
+      if (!interpretation.title) {
+        return { status: 'error', message: 'Cannot create issue: Title is missing from AI interpretation.', interpretation };
+      }
+      const newIssueId = generateNewIssueId(issuesDB);
+      const newIssue: Issue = {
+        id: newIssueId,
+        title: interpretation.title,
+        description: interpretation.description || '',
+        status: (issueStatuses.includes(interpretation.status as IssueStatus) ? interpretation.status : 'To Do') as IssueStatus,
+        priority: (issuePriorities.includes(interpretation.priority as IssuePriority) ? interpretation.priority : 'Medium') as IssuePriority,
+        assignee: interpretation.assignee,
+        reporter: 'AI Command Bar', 
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        labels: [], 
+      };
+      issuesDB.unshift(newIssue);
+      updatedIssueId = newIssueId;
+      revalidatePath('/');
+      return {
+        status: 'success',
+        message: `New issue ${newIssueId}: "${newIssue.title}" created.`,
+        interpretation,
+        updatedIssueId,
+      };
+    } else if (interpretation.issueId) {
+      // Actions that require an existing issueId
+      const issueToUpdate = issuesDB.find(issue => issue.id === interpretation.issueId);
+      if (!issueToUpdate) {
+        return { status: 'error', message: `Issue ${interpretation.issueId} not found.`, interpretation };
+      }
+      updatedIssueId = issueToUpdate.id;
+
+      if (interpretation.action === 'assignIssue' && interpretation.assignee) {
+        issueToUpdate.assignee = interpretation.assignee;
+        issueToUpdate.updatedAt = new Date().toISOString();
+        revalidatePath('/');
+        return {
+          status: 'success',
+          message: `Issue ${issueToUpdate.id} assigned to ${interpretation.assignee}.`,
+          interpretation,
+          updatedIssueId,
+        };
+      } else if (interpretation.action === 'updateIssueStatus' && interpretation.status) {
+        if (!issueStatuses.includes(interpretation.status as IssueStatus)) {
+            return { status: 'error', message: `Invalid status: ${interpretation.status}. Valid are: ${issueStatuses.join(', ')}`, interpretation };
         }
+        issueToUpdate.status = interpretation.status as IssueStatus;
+        issueToUpdate.updatedAt = new Date().toISOString();
+        revalidatePath('/');
+        return {
+          status: 'success',
+          message: `Status of ${issueToUpdate.id} updated to ${interpretation.status}.`,
+          interpretation,
+          updatedIssueId,
+        };
+      } else if (interpretation.action === 'updateIssuePriority' && interpretation.priority) {
+         if (!issuePriorities.includes(interpretation.priority as IssuePriority)) {
+            return { status: 'error', message: `Invalid priority: ${interpretation.priority}. Valid are: ${issuePriorities.join(', ')}`, interpretation };
+        }
+        issueToUpdate.priority = interpretation.priority as IssuePriority;
+        issueToUpdate.updatedAt = new Date().toISOString();
+        revalidatePath('/');
+        return {
+          status: 'success',
+          message: `Priority of ${issueToUpdate.id} updated to ${interpretation.priority}.`,
+          interpretation,
+          updatedIssueId,
+        };
+      } else if (interpretation.action === 'updateIssueDescription' && typeof interpretation.description === 'string') {
+        issueToUpdate.description = interpretation.description;
+        issueToUpdate.updatedAt = new Date().toISOString();
+        revalidatePath('/');
+        return {
+          status: 'success',
+          message: `Description of ${issueToUpdate.id} updated.`,
+          interpretation,
+          updatedIssueId,
+        };
+      } else if (interpretation.action === 'updateIssueTitle' && interpretation.title) {
+        issueToUpdate.title = interpretation.title;
+        issueToUpdate.updatedAt = new Date().toISOString();
+        revalidatePath('/');
+        return {
+          status: 'success',
+          message: `Title of ${issueToUpdate.id} updated.`,
+          interpretation,
+          updatedIssueId,
+        };
+      }
+      // If action implied an issueId but wasn't a recognized update action with necessary data
+      return {
+        status: 'success', // Or 'error' if interpretation is incomplete for the action
+        message: `Command interpreted for issue ${interpretation.issueId}. Action '${interpretation.action}' may require more details or is not fully handled.`,
+        interpretation,
+        updatedIssueId,
+      };
+
     }
 
 
+    // Default success message if no specific database action was taken but interpretation succeeded
     return {
       status: 'success',
-      message: 'Command interpreted. Apply changes manually or refine command.',
+      message: 'Command interpreted. Review interpretation below. No specific database action taken.',
       interpretation,
     };
   } catch (error) {
-    console.error('Error interpreting command:', error);
+    console.error('Error processing command:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to process command. Please try again.';
     return {
       status: 'error',
-      message: error instanceof Error ? error.message : 'Failed to interpret command. Please try again.',
+      message: errorMessage,
     };
   }
 }
@@ -91,8 +197,8 @@ const updateIssueSchema = z.object({
   id: z.string(),
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
-  status: z.custom<IssueStatus>(),
-  priority: z.custom<IssuePriority>(),
+  status: z.custom<IssueStatus>((val) => issueStatuses.includes(val as IssueStatus), "Invalid status value"),
+  priority: z.custom<IssuePriority>((val) => issuePriorities.includes(val as IssuePriority), "Invalid priority value"),
   assignee: z.string().optional(),
 });
 
@@ -113,9 +219,17 @@ export async function updateIssueAction(
     const validatedFields = updateIssueSchema.safeParse(rawData);
 
     if (!validatedFields.success) {
+      // Construct a more detailed error message from Zod errors
+      let errorMessages = "Invalid data: ";
+      const fieldErrors = validatedFields.error.flatten().fieldErrors;
+      for (const key in fieldErrors) {
+          if (fieldErrors[key as keyof typeof fieldErrors]) {
+            errorMessages += `${key}: ${fieldErrors[key as keyof typeof fieldErrors]!.join(', ')}; `;
+          }
+      }
       return {
         status: 'error',
-        message: 'Invalid data. ' + JSON.stringify(validatedFields.error.flatten().fieldErrors),
+        message: errorMessages,
       };
     }
 
@@ -130,7 +244,8 @@ export async function updateIssueAction(
       const updatedIssue = {
         ...issuesDB[issueIndex],
         ...data,
-        assignee: data.assignee || undefined, // Ensure empty string becomes undefined
+        // Ensure 'unassigned' or empty string becomes undefined for assignee if your type expects that
+        assignee: data.assignee === "unassigned" || data.assignee === "" ? undefined : data.assignee,
         updatedAt: new Date().toISOString(),
       };
       issuesDB[issueIndex] = updatedIssue;
@@ -148,3 +263,4 @@ export async function getIssues(): Promise<Issue[]> {
     // In a real app, fetch from Google Sheets or database
     return Promise.resolve(issuesDB);
 }
+
