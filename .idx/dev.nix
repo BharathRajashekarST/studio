@@ -9,7 +9,9 @@
     pkgs.zulu
   ];
   # Sets environment variables in the workspace
-  env = {};
+  env = {
+    GOOGLE_API_KEY = "AIzaSyDi4Ds34k1Nz4guYGpuSqsTbTm8WCQHqGg";
+  };
   # This adds a file watcher to startup the firebase emulators. The emulators will only start if
   # a firebase.json file is written into the user's directory
   services.firebase.emulators = {

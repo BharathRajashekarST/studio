@@ -1,4 +1,7 @@
 {
     "IDX.aI.enableInlineCompletion": true,
-    "IDX.aI.enableCodebaseIndexing": true
+    "IDX.aI.enableCodebaseIndexing": true,
+    "go.toolsEnvVars": {
+        "GOOGLE_API_KEY": "AIzaSyDi4Ds34k1Nz4guYGpuSqsTbTm8WCQHqGg"
+    }
 }

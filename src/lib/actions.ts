@@ -79,7 +79,7 @@ export async function processIssueCommandAction(
         description: interpretation.description || '',
         status: (issueStatuses.includes(interpretation.status as IssueStatus) ? interpretation.status : 'To Do') as IssueStatus,
         priority: (issuePriorities.includes(interpretation.priority as IssuePriority) ? interpretation.priority : 'Medium') as IssuePriority,
-        assignee: interpretation.assignee,
+        assignee: interpretation.assignee || undefined, // Ensure undefined if not provided
         reporter: 'AI Command Bar', 
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -91,7 +91,6 @@ export async function processIssueCommandAction(
       return {
         status: 'success',
         message: `New issue ${newIssueId}: "${newIssue.title}" created.`,
-        interpretation,
         updatedIssueId,
       };
     } else if (interpretation.issueId) {
@@ -100,6 +99,7 @@ export async function processIssueCommandAction(
       if (!issueToUpdate) {
         return { status: 'error', message: `Issue ${interpretation.issueId} not found.`, interpretation };
       }
+      console.log(`Attempting to update issue ${issueToUpdate.id} with interpretation:`, interpretation); // Added logging
       updatedIssueId = issueToUpdate.id;
 
       if (interpretation.action === 'assignIssue' && interpretation.assignee) {

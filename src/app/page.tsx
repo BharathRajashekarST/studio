@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -5,6 +6,7 @@ import { SheetFlowHeader } from '@/components/sheetflow-header';
 import { IssueCommandBar } from '@/components/issues/issue-command-bar';
 import { IssueList } from '@/components/issues/issue-list';
 import { IssueEditDialog } from '@/components/issues/issue-edit-dialog';
+import { CreateIssueForm } from '@/components/issues/create-issue-form'; // Import the new form
 import type { Issue } from '@/lib/types';
 import { getIssues } from '@/lib/actions'; // Server action to fetch issues
 import { Skeleton } from '@/components/ui/skeleton';
@@ -42,18 +44,16 @@ export default function HomePage() {
     setSelectedIssue(null);
   };
 
-  const handleIssueUpdated = () => {
-    // Refetch issues to get the latest data after an update
+  const handleIssueUpdatedOrCreated = React.useCallback(() => {
+    // Refetch issues to get the latest data after an update or creation
     fetchAndSetIssues(); 
-  };
+  }, [fetchAndSetIssues]);
   
-  const handleCommandProcessed = (updatedIssueId?: string) => {
-    if (updatedIssueId) {
-       // If a specific issue was updated by the command, refresh the list
-      fetchAndSetIssues();
-    }
+  const handleCommandProcessed = React.useCallback((updatedIssueId?: string) => {
+    // If a specific issue was updated or a new one created by the command, refresh the list
+    fetchAndSetIssues();
     // Potentially handle other outcomes of command processing here
-  };
+  },[fetchAndSetIssues]);
 
 
   return (
@@ -61,6 +61,7 @@ export default function HomePage() {
       <SheetFlowHeader />
       <main className="mt-8 space-y-8">
         <IssueCommandBar onCommandProcessed={handleCommandProcessed} />
+        <CreateIssueForm onIssueCreated={handleIssueUpdatedOrCreated} /> {/* Add the form here */}
         
         {isLoading ? (
           <div className="space-y-4">
@@ -78,9 +79,10 @@ export default function HomePage() {
           issue={selectedIssue}
           isOpen={isEditDialogOpen}
           onOpenChange={handleDialogClose}
-          onIssueUpdated={handleIssueUpdated}
+          onIssueUpdated={handleIssueUpdatedOrCreated} // Use the unified handler
         />
       )}
     </div>
   );
 }
+

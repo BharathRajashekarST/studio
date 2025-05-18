@@ -66,7 +66,7 @@ const interpretIssueCommandPrompt = ai.definePrompt({
 User Command: "{{{command}}}"
 Contextual Issue ID (this is ONLY a fallback if the command itself doesn't specify an issue ID for an update/assignment action, and should be ignored if it's a placeholder like 'NO_CONTEXT_ID' or 'CREATE_CONTEXT'): "{{{issueId}}}"
 
-Based on the User Command, determine the 'action' and extract relevant details.
+Based on the User Command, determine the 'action' and extract relevant details. For 'createIssue', capture the entire string within single or double quotes as the 'title', even if it contains commas.
 
 Possible Actions & Expected Fields in Output:
 - 'createIssue': If the command is to create a new issue.
